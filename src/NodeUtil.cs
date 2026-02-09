@@ -6,13 +6,27 @@ using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.ValueTask;
 using Soenneker.Node.Util.Abstract;
 using Soenneker.Utils.Process.Abstract;
-using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Node.Util;
 
 /// <inheritdoc cref="INodeUtil"/>
 public sealed class NodeUtil : INodeUtil
 {
+    private static readonly TimeSpan _probeTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan _existsTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan _installTimeoutWin = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan _installTimeoutMac = TimeSpan.FromMinutes(10);
+
+    private const string _scriptExecPath = "-e \"console.log(process.execPath)\"";
+    private const string _scriptVersion = "-e \"console.log(process.version)\"";
+    private const string _scriptExecPathAndVersion = "-e \"console.log(process.execPath + '\\n' + process.version)\"";
+
+    private static readonly string[] _nodeCommandsWindows = ["node", "node.exe"];
+    private static readonly string[] _nodeCommandsUnix = ["node", "nodejs"];
+
+    private static readonly string[] _npxNamesWindows = ["npx.cmd", "npx.exe", "npx"];
+    private static readonly string[] _npxNamesUnix = ["npx"];
+
     private readonly IProcessUtil _processUtil;
     private readonly ILogger<NodeUtil> _logger;
 
@@ -22,13 +36,104 @@ public sealed class NodeUtil : INodeUtil
         _logger = logger;
     }
 
+    public string GetNpxPath()
+    {
+        ReadOnlySpan<string> npxNames = OperatingSystem.IsWindows() ? _npxNamesWindows : _npxNamesUnix;
+
+        try
+        {
+            string? pathEnv = Environment.GetEnvironmentVariable("PATH");
+            if (!string.IsNullOrEmpty(pathEnv))
+            {
+                char sep = Path.PathSeparator;
+                ReadOnlySpan<char> span = pathEnv.AsSpan();
+
+                while (!span.IsEmpty)
+                {
+                    int idx = span.IndexOf(sep);
+                    ReadOnlySpan<char> dirSpan = idx >= 0 ? span[..idx] : span;
+
+                    // advance span
+                    span = idx >= 0 ? span[(idx + 1)..] : ReadOnlySpan<char>.Empty;
+
+                    dirSpan = Trim(dirSpan);
+                    if (dirSpan.IsEmpty)
+                        continue;
+
+                    // One string allocation here (dir) only for non-empty dirs we actually probe
+                    string dir = dirSpan.ToString();
+
+                    for (int i = 0; i < npxNames.Length; i++)
+                    {
+                        string full = Path.Combine(dir, npxNames[i]);
+                        if (File.Exists(full))
+                            return full;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            // Probe common Windows locations without building a list
+            string? programFiles = Environment.GetEnvironmentVariable("ProgramFiles");
+            if (!string.IsNullOrEmpty(programFiles))
+            {
+                string c1 = Path.Combine(programFiles, "nodejs", "npx.cmd");
+                if (File.Exists(c1)) return c1;
+
+                string c2 = Path.Combine(programFiles, "nodejs", "npx.exe");
+                if (File.Exists(c2)) return c2;
+            }
+
+            string? localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+            if (!string.IsNullOrEmpty(localAppData))
+            {
+                string c1 = Path.Combine(localAppData, "Programs", "node", "npx.cmd");
+                if (File.Exists(c1)) return c1;
+
+                string c2 = Path.Combine(localAppData, "Programs", "node", "npx.exe");
+                if (File.Exists(c2)) return c2;
+            }
+
+            string? appData = Environment.GetEnvironmentVariable("APPDATA");
+            if (!string.IsNullOrEmpty(appData))
+            {
+                string c = Path.Combine(appData, "npm", "npx.cmd");
+                if (File.Exists(c)) return c;
+            }
+        }
+        else if (OperatingSystem.IsMacOS())
+        {
+            const string c1 = "/usr/local/bin/npx";
+            if (File.Exists(c1)) return c1;
+
+            const string c2 = "/opt/homebrew/bin/npx";
+            if (File.Exists(c2)) return c2;
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            const string c1 = "/usr/bin/npx";
+            if (File.Exists(c1)) return c1;
+
+            const string c2 = "/usr/local/bin/npx";
+            if (File.Exists(c2)) return c2;
+        }
+
+        return "npx";
+    }
+
     public async ValueTask<string> GetNodePath(string nodeCommand = "node", CancellationToken cancellationToken = default)
     {
         string result = await _processUtil.StartAndGetOutput(
             nodeCommand,
-            "-e \"console.log(process.execPath)\"",
+            _scriptExecPath,
             "",
-            TimeSpan.FromSeconds(5),
+            _probeTimeout,
             cancellationToken
         ).NoSync();
 
@@ -44,16 +149,17 @@ public sealed class NodeUtil : INodeUtil
         {
             if (await TryLocateAny(cancellationToken).NoSync() is { } anyPath)
             {
-                await LogVersionAndReturn(anyPath, cancellationToken);
+                await LogVersion(anyPath, cancellationToken);
                 return anyPath;
             }
 
             if (installIfMissing)
             {
                 await TryInstall(null, cancellationToken).NoSync();
+
                 if (await TryLocateAny(cancellationToken).NoSync() is { } installedAny)
                 {
-                    await LogVersionAndReturn(installedAny, cancellationToken);
+                    await LogVersion(installedAny, cancellationToken);
                     return installedAny;
                 }
             }
@@ -66,16 +172,17 @@ public sealed class NodeUtil : INodeUtil
 
         if (await TryLocate(minVersion, cancellationToken).NoSync() is { } path)
         {
-            await LogVersionAndReturn(path, cancellationToken);
+            await LogVersion(path, cancellationToken);
             return path;
         }
 
         if (installIfMissing)
         {
             await TryInstall(required!, cancellationToken).NoSync();
+
             if (await TryLocate(minVersion, cancellationToken).NoSync() is { } installed)
             {
-                await LogVersionAndReturn(installed, cancellationToken);
+                await LogVersion(installed, cancellationToken);
                 return installed;
             }
         }
@@ -83,11 +190,11 @@ public sealed class NodeUtil : INodeUtil
         throw new InvalidOperationException($"Node.js {minVersion} not found.");
     }
 
-    private async ValueTask LogVersionAndReturn(string nodePath, CancellationToken cancellationToken)
+    private async ValueTask LogVersion(string nodePath, CancellationToken cancellationToken)
     {
         string? version = await GetVersionAtPath(nodePath, cancellationToken).NoSync();
-        if (version is { } v)
-            _logger.LogInformation("Node.js found at {Path}, version {Version}.", nodePath, v);
+        if (!string.IsNullOrWhiteSpace(version))
+            _logger.LogInformation("Node.js found at {Path}, version {Version}.", nodePath, version);
     }
 
     private async ValueTask<string?> GetVersionAtPath(string nodePath, CancellationToken ct)
@@ -96,11 +203,12 @@ public sealed class NodeUtil : INodeUtil
         {
             string output = await _processUtil.StartAndGetOutput(
                 nodePath,
-                "-e \"console.log(process.version)\"",
+                _scriptVersion,
                 "",
-                TimeSpan.FromSeconds(5),
+                _probeTimeout,
                 ct
             ).NoSync();
+
             return output.Trim();
         }
         catch
@@ -117,19 +225,17 @@ public sealed class NodeUtil : INodeUtil
         if (!TryParseVersion(minVersion, out Version? required))
             return null;
 
-        if (RuntimeUtil.IsWindows())
+        if (OperatingSystem.IsWindows())
         {
             if (ProbeHostedToolCache(required!) is { } cached)
                 return cached;
         }
 
-        string[] commands = OperatingSystem.IsWindows()
-            ? ["node", "node.exe"]
-            : ["node", "nodejs"];
+        string[] commands = OperatingSystem.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
 
-        foreach (string cmd in commands)
+        for (int i = 0; i < commands.Length; i++)
         {
-            if (await Probe(cmd, required!, cancellationToken).NoSync() is { } found)
+            if (await Probe(commands[i], required!, cancellationToken).NoSync() is { } found)
                 return found;
         }
 
@@ -138,19 +244,17 @@ public sealed class NodeUtil : INodeUtil
 
     public async ValueTask<string?> TryLocateAny(CancellationToken cancellationToken = default)
     {
-        if (RuntimeUtil.IsWindows())
+        if (OperatingSystem.IsWindows())
         {
             if (ProbeHostedToolCacheAny() is { } cached)
                 return cached;
         }
 
-        string[] commands = OperatingSystem.IsWindows()
-            ? ["node", "node.exe"]
-            : ["node", "nodejs"];
+        string[] commands = OperatingSystem.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
 
-        foreach (string cmd in commands)
+        for (int i = 0; i < commands.Length; i++)
         {
-            if (await ProbeAny(cmd, cancellationToken).NoSync() is { } found)
+            if (await ProbeAny(commands[i], cancellationToken).NoSync() is { } found)
                 return found;
         }
 
@@ -161,9 +265,9 @@ public sealed class NodeUtil : INodeUtil
     {
         bool latest = version is null;
         int major = version?.Major ?? 0;
-        var ver = major.ToString();
+        string ver = major.ToString();
 
-        if (RuntimeUtil.IsLinux())
+        if (OperatingSystem.IsLinux())
         {
             try
             {
@@ -178,14 +282,14 @@ public sealed class NodeUtil : INodeUtil
                 _logger.LogWarning(ex, "apt-get install nodejs failed (node may already be installed or install may require privileges).");
             }
         }
-        else if (RuntimeUtil.IsWindows())
+        else if (OperatingSystem.IsWindows())
         {
             string wingetId = latest ? "OpenJS.NodeJS" : $"OpenJS.NodeJS.{major}";
             string wingetArgs = latest
                 ? "install --exact --id OpenJS.NodeJS --silent --disable-interactivity --accept-source-agreements --accept-package-agreements --source winget"
                 : $"install --exact --id {wingetId} --silent --disable-interactivity --accept-source-agreements --accept-package-agreements --source winget";
 
-            if (await _processUtil.CommandExistsAndRuns("winget", "--version", TimeSpan.FromSeconds(3), cancellationToken).NoSync())
+            if (await _processUtil.CommandExistsAndRuns("winget", "--version", _existsTimeout, cancellationToken).NoSync())
             {
                 try
                 {
@@ -193,7 +297,7 @@ public sealed class NodeUtil : INodeUtil
                         "winget",
                         wingetArgs,
                         "",
-                        TimeSpan.FromMinutes(5),
+                        _installTimeoutWin,
                         cancellationToken
                     ).NoSync();
                 }
@@ -202,16 +306,19 @@ public sealed class NodeUtil : INodeUtil
                     _logger.LogWarning(ex, "winget install {WingetId} failed (node may already be installed or install may require elevation).", wingetId);
                 }
             }
-            else if (await _processUtil.CommandExistsAndRuns("choco", "--version", TimeSpan.FromSeconds(3), cancellationToken).NoSync())
+            else if (await _processUtil.CommandExistsAndRuns("choco", "--version", _existsTimeout, cancellationToken).NoSync())
             {
                 try
                 {
-                    string chocoArgs = latest ? "install nodejs -y --no-progress" : $"install nodejs --version {major}.0.0 -y --no-progress";
+                    string chocoArgs = latest
+                        ? "install nodejs -y --no-progress"
+                        : $"install nodejs --version {major}.0.0 -y --no-progress";
+
                     await _processUtil.StartAndGetOutput(
                         "choco",
                         chocoArgs,
                         "",
-                        TimeSpan.FromMinutes(5),
+                        _installTimeoutWin,
                         cancellationToken
                     ).NoSync();
                 }
@@ -225,7 +332,7 @@ public sealed class NodeUtil : INodeUtil
                 throw new InvalidOperationException("Neither winget nor Chocolatey is available to install Node.js on this runner.");
             }
         }
-        else if (RuntimeUtil.IsMacOs())
+        else if (OperatingSystem.IsMacOS())
         {
             try
             {
@@ -234,7 +341,7 @@ public sealed class NodeUtil : INodeUtil
                     "brew",
                     brewArgs,
                     "",
-                    TimeSpan.FromMinutes(10),
+                    _installTimeoutMac,
                     cancellationToken
                 ).NoSync();
             }
@@ -254,9 +361,10 @@ public sealed class NodeUtil : INodeUtil
 
         foreach (string verDir in Directory.EnumerateDirectories(nodeRoot))
         {
-            string dirName = Path.GetFileName(verDir);
-            if (string.IsNullOrEmpty(dirName) || dirName.Length < 2)
+            string? dirName = Path.GetFileName(verDir);
+            if (string.IsNullOrEmpty(dirName))
                 continue;
+
             if (!Version.TryParse(dirName, out Version? v) || !MatchMajorMinor(v, target))
                 continue;
 
@@ -291,11 +399,12 @@ public sealed class NodeUtil : INodeUtil
         {
             string output = await _processUtil.StartAndGetOutput(
                 command,
-                "-e \"console.log(process.execPath)\"",
+                _scriptExecPath,
                 "",
-                TimeSpan.FromSeconds(5),
+                _probeTimeout,
                 ct
             ).NoSync();
+
             return output.Trim();
         }
         catch
@@ -310,25 +419,37 @@ public sealed class NodeUtil : INodeUtil
         {
             string output = await _processUtil.StartAndGetOutput(
                 command,
-                "-e \"console.log(process.execPath + '\\n' + process.version)\"",
+                _scriptExecPathAndVersion,
                 "",
-                TimeSpan.FromSeconds(5),
+                _probeTimeout,
                 ct
             ).NoSync();
 
-            string[] lines = output.Trim().Split('\n');
-            if (lines.Length < 2)
+            ReadOnlySpan<char> s = output.AsSpan();
+            s = Trim(s);
+
+            // Find last newline (supports both \n and \r\n)
+            int nl = s.LastIndexOf('\n');
+            if (nl <= 0)
                 return null;
 
-            string execPath = lines[0].Trim();
-            string versionStr = lines[^1].Trim();
-            if (versionStr.StartsWith('v'))
-                versionStr = versionStr[1..];
+            ReadOnlySpan<char> execPathSpan = Trim(s[..nl]);
+            ReadOnlySpan<char> versionSpan = Trim(s[(nl + 1)..]);
 
-            if (!Version.TryParse(versionStr, out Version? v))
+            if (execPathSpan.IsEmpty || versionSpan.IsEmpty)
                 return null;
 
-            return MatchMajorMinor(v, target) ? execPath : null;
+            if (versionSpan[0] == 'v')
+                versionSpan = Trim(versionSpan[1..]);
+
+            // Version.TryParse requires string
+            if (!Version.TryParse(versionSpan.ToString(), out Version? v))
+                return null;
+
+            if (!MatchMajorMinor(v, target))
+                return null;
+
+            return execPathSpan.ToString();
         }
         catch
         {
@@ -342,14 +463,32 @@ public sealed class NodeUtil : INodeUtil
     private static bool TryParseVersion(string version, out Version? result)
     {
         result = null;
+
         if (string.IsNullOrWhiteSpace(version))
             return false;
-        version = version.Trim();
-        if (version.StartsWith('v'))
-            version = version[1..].Trim();
-        // Version.TryParse often requires at least "major.minor"; normalize "20" -> "20.0"
-        if (version.Length > 0 && version.IndexOf('.') < 0)
-            version += ".0";
-        return Version.TryParse(version, out result);
+
+        ReadOnlySpan<char> s = Trim(version.AsSpan());
+        if (!s.IsEmpty && s[0] == 'v')
+            s = Trim(s[1..]);
+
+        // Normalize "20" -> "20.0" to satisfy Version.TryParse expectations
+        if (s.IndexOf('.') < 0)
+            return Version.TryParse($"{s}.0", out result);
+
+        return Version.TryParse(s.ToString(), out result);
+    }
+
+    private static ReadOnlySpan<char> Trim(ReadOnlySpan<char> s)
+    {
+        int start = 0;
+        int end = s.Length - 1;
+
+        while ((uint)start < (uint)s.Length && char.IsWhiteSpace(s[start]))
+            start++;
+
+        while (end >= start && char.IsWhiteSpace(s[end]))
+            end--;
+
+        return s.Slice(start, end - start + 1);
     }
 }

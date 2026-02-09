@@ -55,4 +55,12 @@ public interface INodeUtil
     /// <param name="version">Version to install (e.g., 20 or 20.10), or null to install the latest.</param>
     /// <param name="cancellationToken">Optional cancellation token.</param>
     ValueTask TryInstall(Version? version, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves the path to the npx executable. Searches PATH first, then platform-specific install locations
+    /// (e.g. on Windows: ProgramFiles\nodejs, LOCALAPPDATA\Programs\node). Returns a full path when found,
+    /// otherwise <c>"npx"</c> so the caller can still invoke it if PATH is set at run time.
+    /// </summary>
+    [Pure]
+    string GetNpxPath();
 }
