@@ -56,7 +56,7 @@ public sealed class NodeUtil : INodeUtil
                     // advance span
                     span = idx >= 0 ? span[(idx + 1)..] : ReadOnlySpan<char>.Empty;
 
-                    dirSpan = Trim(dirSpan);
+                    dirSpan = dirSpan.Trim();
                     if (dirSpan.IsEmpty)
                         continue;
 
@@ -426,21 +426,21 @@ public sealed class NodeUtil : INodeUtil
             ).NoSync();
 
             ReadOnlySpan<char> s = output.AsSpan();
-            s = Trim(s);
+            s = s.Trim();
 
             // Find last newline (supports both \n and \r\n)
             int nl = s.LastIndexOf('\n');
             if (nl <= 0)
                 return null;
 
-            ReadOnlySpan<char> execPathSpan = Trim(s[..nl]);
-            ReadOnlySpan<char> versionSpan = Trim(s[(nl + 1)..]);
+            ReadOnlySpan<char> execPathSpan = s[..nl].Trim();
+            ReadOnlySpan<char> versionSpan = s[(nl + 1)..].Trim();
 
             if (execPathSpan.IsEmpty || versionSpan.IsEmpty)
                 return null;
 
             if (versionSpan[0] == 'v')
-                versionSpan = Trim(versionSpan[1..]);
+                versionSpan = versionSpan[1..].Trim();
 
             // Version.TryParse requires string
             if (!Version.TryParse(versionSpan.ToString(), out Version? v))
@@ -467,28 +467,14 @@ public sealed class NodeUtil : INodeUtil
         if (string.IsNullOrWhiteSpace(version))
             return false;
 
-        ReadOnlySpan<char> s = Trim(version.AsSpan());
+        ReadOnlySpan<char> s = version.AsSpan().Trim();
         if (!s.IsEmpty && s[0] == 'v')
-            s = Trim(s[1..]);
+            s = s[1..].Trim();
 
         // Normalize "20" -> "20.0" to satisfy Version.TryParse expectations
         if (s.IndexOf('.') < 0)
             return Version.TryParse($"{s}.0", out result);
 
         return Version.TryParse(s.ToString(), out result);
-    }
-
-    private static ReadOnlySpan<char> Trim(ReadOnlySpan<char> s)
-    {
-        int start = 0;
-        int end = s.Length - 1;
-
-        while ((uint)start < (uint)s.Length && char.IsWhiteSpace(s[start]))
-            start++;
-
-        while (end >= start && char.IsWhiteSpace(s[end]))
-            end--;
-
-        return s.Slice(start, end - start + 1);
     }
 }
