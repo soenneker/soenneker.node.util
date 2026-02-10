@@ -5,7 +5,9 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.ValueTask;
 using Soenneker.Node.Util.Abstract;
+using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.Process.Abstract;
+using System.Collections.Generic;
 
 namespace Soenneker.Node.Util;
 
@@ -29,11 +31,13 @@ public sealed class NodeUtil : INodeUtil
 
     private readonly IProcessUtil _processUtil;
     private readonly ILogger<NodeUtil> _logger;
+    private readonly IDirectoryUtil _directoryUtil;
 
-    public NodeUtil(IProcessUtil processUtil, ILogger<NodeUtil> logger)
+    public NodeUtil(IProcessUtil processUtil, ILogger<NodeUtil> logger, IDirectoryUtil directoryUtil)
     {
         _processUtil = processUtil;
         _logger = logger;
+        _directoryUtil = directoryUtil;
     }
 
     public string GetNpxPath()
@@ -227,7 +231,7 @@ public sealed class NodeUtil : INodeUtil
 
         if (OperatingSystem.IsWindows())
         {
-            if (ProbeHostedToolCache(required!) is { } cached)
+            if (await ProbeHostedToolCacheAsync(required!, cancellationToken).NoSync() is { } cached)
                 return cached;
         }
 
@@ -246,7 +250,7 @@ public sealed class NodeUtil : INodeUtil
     {
         if (OperatingSystem.IsWindows())
         {
-            if (ProbeHostedToolCacheAny() is { } cached)
+            if (await ProbeHostedToolCacheAnyAsync(cancellationToken).NoSync() is { } cached)
                 return cached;
         }
 
@@ -352,14 +356,15 @@ public sealed class NodeUtil : INodeUtil
         }
     }
 
-    private static string? ProbeHostedToolCache(Version target)
+    private async ValueTask<string?> ProbeHostedToolCacheAsync(Version target, CancellationToken cancellationToken)
     {
         string root = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? @"C:\hostedtoolcache\windows";
         string nodeRoot = Path.Combine(root, "Node");
-        if (!Directory.Exists(nodeRoot))
+        if (!(await _directoryUtil.Exists(nodeRoot, cancellationToken)))
             return null;
 
-        foreach (string verDir in Directory.EnumerateDirectories(nodeRoot))
+        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken);
+        foreach (string verDir in verDirs)
         {
             string? dirName = Path.GetFileName(verDir);
             if (string.IsNullOrEmpty(dirName))
@@ -376,14 +381,15 @@ public sealed class NodeUtil : INodeUtil
         return null;
     }
 
-    private static string? ProbeHostedToolCacheAny()
+    private async ValueTask<string?> ProbeHostedToolCacheAnyAsync(CancellationToken cancellationToken)
     {
         string root = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? @"C:\hostedtoolcache\windows";
         string nodeRoot = Path.Combine(root, "Node");
-        if (!Directory.Exists(nodeRoot))
+        if (!(await _directoryUtil.Exists(nodeRoot, cancellationToken)))
             return null;
 
-        foreach (string verDir in Directory.EnumerateDirectories(nodeRoot))
+        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken);
+        foreach (string verDir in verDirs)
         {
             string candidate = Path.Combine(verDir, "x64", "node.exe");
             if (File.Exists(candidate))
