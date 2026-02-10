@@ -231,7 +231,7 @@ public sealed class NodeUtil : INodeUtil
 
         if (OperatingSystem.IsWindows())
         {
-            if (await ProbeHostedToolCacheAsync(required!, cancellationToken).NoSync() is { } cached)
+            if (await ProbeHostedToolCache(required!, cancellationToken).NoSync() is { } cached)
                 return cached;
         }
 
@@ -250,7 +250,7 @@ public sealed class NodeUtil : INodeUtil
     {
         if (OperatingSystem.IsWindows())
         {
-            if (await ProbeHostedToolCacheAnyAsync(cancellationToken).NoSync() is { } cached)
+            if (await ProbeHostedToolCacheAny(cancellationToken).NoSync() is { } cached)
                 return cached;
         }
 
@@ -356,7 +356,7 @@ public sealed class NodeUtil : INodeUtil
         }
     }
 
-    private async ValueTask<string?> ProbeHostedToolCacheAsync(Version target, CancellationToken cancellationToken)
+    private async ValueTask<string?> ProbeHostedToolCache(Version target, CancellationToken cancellationToken)
     {
         string root = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? @"C:\hostedtoolcache\windows";
         string nodeRoot = Path.Combine(root, "Node");
@@ -381,7 +381,7 @@ public sealed class NodeUtil : INodeUtil
         return null;
     }
 
-    private async ValueTask<string?> ProbeHostedToolCacheAnyAsync(CancellationToken cancellationToken)
+    private async ValueTask<string?> ProbeHostedToolCacheAny(CancellationToken cancellationToken)
     {
         string root = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? @"C:\hostedtoolcache\windows";
         string nodeRoot = Path.Combine(root, "Node");
