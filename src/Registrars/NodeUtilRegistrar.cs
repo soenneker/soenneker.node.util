@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Soenneker.Node.Util.Abstract;
 using Soenneker.Utils.Directory.Registrars;
+using Soenneker.Utils.File.Registrars;
 using Soenneker.Utils.Process.Registrars;
 
 namespace Soenneker.Node.Util.Registrars;
@@ -16,7 +17,7 @@ public static class NodeUtilRegistrar
     /// </summary>
     public static IServiceCollection AddNodeUtilAsSingleton(this IServiceCollection services)
     {
-        services.AddDirectoryUtilAsSingleton().AddProcessUtilAsSingleton().TryAddSingleton<INodeUtil, NodeUtil>();
+        services.AddFileUtilAsSingleton().AddDirectoryUtilAsSingleton().AddProcessUtilAsSingleton().TryAddSingleton<INodeUtil, NodeUtil>();
 
         return services;
     }
@@ -26,7 +27,7 @@ public static class NodeUtilRegistrar
     /// </summary>
     public static IServiceCollection AddNodeUtilAsScoped(this IServiceCollection services)
     {
-        services.AddDirectoryUtilAsScoped().AddProcessUtilAsScoped().TryAddScoped<INodeUtil, NodeUtil>();
+        services.AddFileUtilAsScoped().AddDirectoryUtilAsScoped().AddProcessUtilAsScoped().TryAddScoped<INodeUtil, NodeUtil>();
 
         return services;
     }

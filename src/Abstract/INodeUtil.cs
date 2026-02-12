@@ -1,66 +1,117 @@
 using System;
-using System.Diagnostics.Contracts;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace Soenneker.Node.Util.Abstract;
 
 /// <summary>
-/// A utility library for Node related operations (cross-platform).
+/// Provides helpers for locating, verifying, and installing Node.js and for running common npm operations.
 /// </summary>
 public interface INodeUtil
 {
     /// <summary>
-    /// Returns the absolute path to the Node.js executable resolved from <paramref name="nodeCommand"/>.
+    /// Resolves the path to the <c>npx</c> executable for the current OS.
+    /// </summary>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>
+    /// The resolved <c>npx</c> executable path if found; otherwise the default command name (<c>npx</c>).
+    /// </returns>
+    ValueTask<string> GetNpxPath(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Resolves the path to the <c>npm</c> executable for the current OS.
+    /// </summary>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>
+    /// The resolved <c>npm</c> executable path if found; otherwise the default command name (<c>npm</c>).
+    /// </returns>
+    ValueTask<string> GetNpmPath(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Gets the full path to the Node.js executable by executing a small Node script that prints <c>process.execPath</c>.
     /// </summary>
     /// <param name="nodeCommand">
-    /// Command or launcher to invoke (e.g., <c>"node"</c>). Defaults to <c>"node"</c>.
+    /// The node command/executable to run (for example <c>node</c>, <c>node.exe</c>, or an absolute path).
     /// </param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    [Pure]
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The resolved Node.js executable path.</returns>
     ValueTask<string> GetNodePath(string nodeCommand = "node", CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Ensures that Node.js is installed. When <paramref name="minVersion"/> is null or empty, accepts any version and installs the latest if missing.
+    /// Ensures Node.js is installed and (optionally) meets a minimum version.
     /// </summary>
-    /// <param name="minVersion">Minimum acceptable version (e.g., <c>"20"</c> or <c>"20.10"</c>), or null/empty for any version (install latest if missing).</param>
-    /// <param name="installIfMissing">Attempt to install via winget / brew / apt if not found.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Full path to the node executable that satisfies the requirement.</returns>
+    /// <param name="minVersion">
+    /// Optional minimum version string. Examples: <c>20</c>, <c>20.11</c>, <c>v20.11.1</c>.
+    /// If <see langword="null"/> or whitespace, any installed version is accepted.
+    /// </param>
+    /// <param name="installIfMissing">
+    /// When <see langword="true"/>, attempts to install Node.js if it cannot be located.
+    /// When <see langword="false"/>, the method only probes and will throw if not found.
+    /// </param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The resolved Node.js executable path.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="minVersion"/> cannot be parsed.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when Node.js cannot be found (or installed when enabled).</exception>
     ValueTask<string> EnsureInstalled(string? minVersion = null, bool installIfMissing = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Tries to locate an installed Node.js that satisfies the given version (major, or major.minor).
-    /// When <paramref name="minVersion"/> is null or empty, returns any installed node (same as <see cref="TryLocateAny"/>).
-    /// Does not install; returns null if not found.
+    /// Attempts to locate Node.js and (optionally) verify it meets a minimum version requirement.
     /// </summary>
-    /// <param name="minVersion">Minimum version (e.g., <c>"20"</c> or <c>"20.10"</c>), or null/empty for any version.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Full path to node executable, or null if not found.</returns>
-    [Pure]
+    /// <param name="minVersion">
+    /// Optional minimum version string. Examples: <c>20</c>, <c>20.11</c>, <c>v20.11.1</c>.
+    /// If <see langword="null"/> or whitespace, any installed version is accepted.
+    /// </param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>
+    /// The resolved Node.js executable path if found and compatible; otherwise <see langword="null"/>.
+    /// </returns>
     ValueTask<string?> TryLocate(string? minVersion = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Tries to locate any installed Node.js (any version). Does not install; returns null if none found.
+    /// Attempts to locate any Node.js installation.
     /// </summary>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Full path to node executable, or null if not found.</returns>
-    [Pure]
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>
+    /// The resolved Node.js executable path if found; otherwise <see langword="null"/>.
+    /// </returns>
     ValueTask<string?> TryLocateAny(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Invokes the platform-appropriate package manager to install Node.js.
-    /// When <paramref name="version"/> is null, installs the latest version; otherwise installs the specified major (and optionally minor).
+    /// Attempts to install Node.js.
     /// </summary>
-    /// <param name="version">Version to install (e.g., 20 or 20.10), or null to install the latest.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <param name="version">
+    /// The target version to install. When <see langword="null"/>, installs the latest available version.
+    /// Platform-specific installers may only honor the major version (for example <c>20</c>).
+    /// </param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <remarks>
+    /// Installation strategy is OS-specific (for example: apt-get on Linux, winget/choco on Windows, brew on macOS).
+    /// This method may require elevated privileges depending on the environment.
+    /// </remarks>
     ValueTask TryInstall(Version? version, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Resolves the path to the npx executable. Searches PATH first, then platform-specific install locations
-    /// (e.g. on Windows: ProgramFiles\nodejs, LOCALAPPDATA\Programs\node). Returns a full path when found,
-    /// otherwise <c>"npx"</c> so the caller can still invoke it if PATH is set at run time.
+    /// Runs <c>npm install</c> or <c>npm ci</c> in the specified directory.
     /// </summary>
-    [Pure]
-    string GetNpxPath();
+    /// <param name="directory">The directory containing the npm project.</param>
+    /// <param name="cleanInstall">
+    /// When <see langword="true"/>, runs <c>npm ci</c>; otherwise runs <c>npm install</c>.
+    /// </param>
+    /// <param name="omitDevDependencies">When <see langword="true"/>, adds <c>--omit=dev</c>.</param>
+    /// <param name="ignoreScripts">When <see langword="true"/>, adds <c>--ignore-scripts</c>.</param>
+    /// <param name="noAudit">When <see langword="true"/>, adds <c>--no-audit</c>.</param>
+    /// <param name="noFund">When <see langword="true"/>, adds <c>--no-fund</c>.</param>
+    /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>The captured stdout/stderr output from the npm command.</returns>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="directory"/> is null/empty/whitespace.</exception>
+    /// <exception cref="DirectoryNotFoundException">Thrown when <paramref name="directory"/> does not exist.</exception>
+    ValueTask<string> NpmInstall(
+        string directory,
+        bool cleanInstall = false,
+        bool omitDevDependencies = false,
+        bool ignoreScripts = false,
+        bool noAudit = true,
+        bool noFund = true,
+        CancellationToken cancellationToken = default);
 }

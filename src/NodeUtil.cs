@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -6,8 +7,9 @@ using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.ValueTask;
 using Soenneker.Node.Util.Abstract;
 using Soenneker.Utils.Directory.Abstract;
+using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.Process.Abstract;
-using System.Collections.Generic;
+using Soenneker.Extensions.String;
 
 namespace Soenneker.Node.Util;
 
@@ -19,6 +21,9 @@ public sealed class NodeUtil : INodeUtil
     private static readonly TimeSpan _installTimeoutWin = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan _installTimeoutMac = TimeSpan.FromMinutes(10);
 
+    private static readonly TimeSpan _npmInstallTimeoutWin = TimeSpan.FromMinutes(20);
+    private static readonly TimeSpan _npmInstallTimeoutUnix = TimeSpan.FromMinutes(20);
+
     private const string _scriptExecPath = "-e \"console.log(process.execPath)\"";
     private const string _scriptVersion = "-e \"console.log(process.version)\"";
     private const string _scriptExecPathAndVersion = "-e \"console.log(process.execPath + '\\n' + process.version)\"";
@@ -29,106 +34,224 @@ public sealed class NodeUtil : INodeUtil
     private static readonly string[] _npxNamesWindows = ["npx.cmd", "npx.exe", "npx"];
     private static readonly string[] _npxNamesUnix = ["npx"];
 
+    private static readonly string[] _npmNamesWindows = ["npm.cmd", "npm.exe", "npm"];
+    private static readonly string[] _npmNamesUnix = ["npm"];
+
+    private const string _macNpx1 = "/usr/local/bin/npx";
+    private const string _macNpx2 = "/opt/homebrew/bin/npx";
+    private const string _linuxNpx1 = "/usr/bin/npx";
+    private const string _linuxNpx2 = "/usr/local/bin/npx";
+
+    private const string _macNpm1 = "/usr/local/bin/npm";
+    private const string _macNpm2 = "/opt/homebrew/bin/npm";
+    private const string _linuxNpm1 = "/usr/bin/npm";
+    private const string _linuxNpm2 = "/usr/local/bin/npm";
+
     private readonly IProcessUtil _processUtil;
     private readonly ILogger<NodeUtil> _logger;
     private readonly IDirectoryUtil _directoryUtil;
+    private readonly IFileUtil _fileUtil;
 
-    public NodeUtil(IProcessUtil processUtil, ILogger<NodeUtil> logger, IDirectoryUtil directoryUtil)
+    public NodeUtil(IProcessUtil processUtil, ILogger<NodeUtil> logger, IDirectoryUtil directoryUtil, IFileUtil fileUtil)
     {
         _processUtil = processUtil;
         _logger = logger;
         _directoryUtil = directoryUtil;
+        _fileUtil = fileUtil;
     }
 
-    public string GetNpxPath()
+    public ValueTask<string> GetNpxPath(CancellationToken cancellationToken = default)
     {
-        ReadOnlySpan<string> npxNames = OperatingSystem.IsWindows() ? _npxNamesWindows : _npxNamesUnix;
+        string[] names = OperatingSystem.IsWindows() ? _npxNamesWindows : _npxNamesUnix;
 
+        return ResolveExecutable(
+            names,
+            defaultCommand: "npx",
+            windowsProbe: ProbeWindowsNpx,
+            macProbe: ProbeMacNpx,
+            linuxProbe: ProbeLinuxNpx,
+            cancellationToken);
+    }
+
+    public ValueTask<string> GetNpmPath(CancellationToken cancellationToken = default)
+    {
+        string[] names = OperatingSystem.IsWindows() ? _npmNamesWindows : _npmNamesUnix;
+
+        return ResolveExecutable(
+            names,
+            defaultCommand: "npm",
+            windowsProbe: ProbeWindowsNpm,
+            macProbe: ProbeMacNpm,
+            linuxProbe: ProbeLinuxNpm,
+            cancellationToken);
+    }
+
+    private async ValueTask<string> ResolveExecutable(
+        string[] names,
+        string defaultCommand,
+        Func<CancellationToken, ValueTask<string?>> windowsProbe,
+        Func<CancellationToken, ValueTask<string?>> macProbe,
+        Func<CancellationToken, ValueTask<string?>> linuxProbe,
+        CancellationToken cancellationToken)
+    {
+        if (await TryResolveFromPathEnv(names, cancellationToken).NoSync() is { } fromPath)
+            return fromPath;
+
+        string? osFound = null;
+
+        if (OperatingSystem.IsWindows())
+            osFound = await windowsProbe(cancellationToken).NoSync();
+        else if (OperatingSystem.IsMacOS())
+            osFound = await macProbe(cancellationToken).NoSync();
+        else if (OperatingSystem.IsLinux())
+            osFound = await linuxProbe(cancellationToken).NoSync();
+
+        return osFound ?? defaultCommand;
+    }
+
+
+    private async ValueTask<string?> TryResolveFromPathEnv(string[] names, CancellationToken cancellationToken)
+    {
         try
         {
             string? pathEnv = Environment.GetEnvironmentVariable("PATH");
-            if (!string.IsNullOrEmpty(pathEnv))
+            if (string.IsNullOrEmpty(pathEnv))
+                return null;
+
+            char sep = Path.PathSeparator;
+
+            int pos = 0;
+
+            while (pos <= pathEnv.Length)
             {
-                char sep = Path.PathSeparator;
-                ReadOnlySpan<char> span = pathEnv.AsSpan();
+                int next = pathEnv.IndexOf(sep, pos);
+                int end = next >= 0 ? next : pathEnv.Length;
 
-                while (!span.IsEmpty)
+                // Extract segment [pos, end)
+                int len = end - pos;
+
+                // Advance cursor NOW (so only ints live across awaits)
+                pos = next >= 0 ? end + 1 : pathEnv.Length + 1;
+
+                if (len <= 0)
+                    continue;
+
+                // Span is used only inside this block and is gone before any await
+                ReadOnlySpan<char> dirSpan = pathEnv.AsSpan(end - len, len).Trim();
+                if (dirSpan.IsEmpty)
+                    continue;
+
+                string dir = dirSpan.ToString();
+
+                for (int i = 0; i < names.Length; i++)
                 {
-                    int idx = span.IndexOf(sep);
-                    ReadOnlySpan<char> dirSpan = idx >= 0 ? span[..idx] : span;
+                    string full = Path.Combine(dir, names[i]);
 
-                    // advance span
-                    span = idx >= 0 ? span[(idx + 1)..] : ReadOnlySpan<char>.Empty;
-
-                    dirSpan = dirSpan.Trim();
-                    if (dirSpan.IsEmpty)
-                        continue;
-
-                    // One string allocation here (dir) only for non-empty dirs we actually probe
-                    string dir = dirSpan.ToString();
-
-                    for (int i = 0; i < npxNames.Length; i++)
-                    {
-                        string full = Path.Combine(dir, npxNames[i]);
-                        if (File.Exists(full))
-                            return full;
-                    }
+                    if (await _fileUtil.Exists(full, cancellationToken).NoSync())
+                        return full;
                 }
             }
         }
         catch
         {
-            /* ignore */
+            // ignore
         }
 
-        if (OperatingSystem.IsWindows())
+        return null;
+    }
+
+    private async ValueTask<string?> ProbeMacNpx(CancellationToken cancellationToken)
+    {
+        if (await _fileUtil.Exists(_macNpx1, cancellationToken).NoSync()) return _macNpx1;
+        if (await _fileUtil.Exists(_macNpx2, cancellationToken).NoSync()) return _macNpx2;
+        return null;
+    }
+
+    private async ValueTask<string?> ProbeLinuxNpx(CancellationToken cancellationToken)
+    {
+        if (await _fileUtil.Exists(_linuxNpx1, cancellationToken).NoSync()) return _linuxNpx1;
+        if (await _fileUtil.Exists(_linuxNpx2, cancellationToken).NoSync()) return _linuxNpx2;
+        return null;
+    }
+
+    private async ValueTask<string?> ProbeMacNpm(CancellationToken cancellationToken)
+    {
+        if (await _fileUtil.Exists(_macNpm1, cancellationToken).NoSync()) return _macNpm1;
+        if (await _fileUtil.Exists(_macNpm2, cancellationToken).NoSync()) return _macNpm2;
+        return null;
+    }
+
+    private async ValueTask<string?> ProbeLinuxNpm(CancellationToken cancellationToken)
+    {
+        if (await _fileUtil.Exists(_linuxNpm1, cancellationToken).NoSync()) return _linuxNpm1;
+        if (await _fileUtil.Exists(_linuxNpm2, cancellationToken).NoSync()) return _linuxNpm2;
+        return null;
+    }
+
+    private async ValueTask<string?> ProbeWindowsNpx(CancellationToken cancellationToken)
+    {
+        // Probe common Windows locations without building a list
+
+        string? programFiles = Environment.GetEnvironmentVariable("ProgramFiles");
+        if (programFiles.HasContent())
         {
-            // Probe common Windows locations without building a list
-            string? programFiles = Environment.GetEnvironmentVariable("ProgramFiles");
-            if (!string.IsNullOrEmpty(programFiles))
-            {
-                string c1 = Path.Combine(programFiles, "nodejs", "npx.cmd");
-                if (File.Exists(c1)) return c1;
+            string c1 = Path.Combine(programFiles, "nodejs", "npx.cmd");
+            if (await _fileUtil.Exists(c1, cancellationToken).NoSync()) return c1;
 
-                string c2 = Path.Combine(programFiles, "nodejs", "npx.exe");
-                if (File.Exists(c2)) return c2;
-            }
-
-            string? localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
-            if (!string.IsNullOrEmpty(localAppData))
-            {
-                string c1 = Path.Combine(localAppData, "Programs", "node", "npx.cmd");
-                if (File.Exists(c1)) return c1;
-
-                string c2 = Path.Combine(localAppData, "Programs", "node", "npx.exe");
-                if (File.Exists(c2)) return c2;
-            }
-
-            string? appData = Environment.GetEnvironmentVariable("APPDATA");
-            if (!string.IsNullOrEmpty(appData))
-            {
-                string c = Path.Combine(appData, "npm", "npx.cmd");
-                if (File.Exists(c)) return c;
-            }
+            string c2 = Path.Combine(programFiles, "nodejs", "npx.exe");
+            if (await _fileUtil.Exists(c2, cancellationToken).NoSync()) return c2;
         }
-        else if (OperatingSystem.IsMacOS())
+
+        string? localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        if (localAppData.HasContent())
         {
-            const string c1 = "/usr/local/bin/npx";
-            if (File.Exists(c1)) return c1;
+            string c1 = Path.Combine(localAppData, "Programs", "node", "npx.cmd");
+            if (await _fileUtil.Exists(c1, cancellationToken).NoSync()) return c1;
 
-            const string c2 = "/opt/homebrew/bin/npx";
-            if (File.Exists(c2)) return c2;
+            string c2 = Path.Combine(localAppData, "Programs", "node", "npx.exe");
+            if (await _fileUtil.Exists(c2, cancellationToken).NoSync()) return c2;
         }
-        else if (OperatingSystem.IsLinux())
+
+        string? appData = Environment.GetEnvironmentVariable("APPDATA");
+        if (appData.HasContent())
         {
-            const string c1 = "/usr/bin/npx";
-            if (File.Exists(c1)) return c1;
-
-            const string c2 = "/usr/local/bin/npx";
-            if (File.Exists(c2)) return c2;
+            string c = Path.Combine(appData, "npm", "npx.cmd");
+            if (await _fileUtil.Exists(c, cancellationToken).NoSync()) return c;
         }
 
-        return "npx";
+        return null;
+    }
+
+    private async ValueTask<string?> ProbeWindowsNpm(CancellationToken cancellationToken)
+    {
+        string? programFiles = Environment.GetEnvironmentVariable("ProgramFiles");
+        if (programFiles.HasContent())
+        {
+            string c1 = Path.Combine(programFiles, "nodejs", "npm.cmd");
+            if (await _fileUtil.Exists(c1, cancellationToken).NoSync()) return c1;
+
+            string c2 = Path.Combine(programFiles, "nodejs", "npm.exe");
+            if (await _fileUtil.Exists(c2, cancellationToken).NoSync()) return c2;
+        }
+
+        string? localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
+        if (localAppData.HasContent())
+        {
+            string c1 = Path.Combine(localAppData, "Programs", "node", "npm.cmd");
+            if (await _fileUtil.Exists(c1, cancellationToken).NoSync()) return c1;
+
+            string c2 = Path.Combine(localAppData, "Programs", "node", "npm.exe");
+            if (await _fileUtil.Exists(c2, cancellationToken).NoSync()) return c2;
+        }
+
+        string? appData = Environment.GetEnvironmentVariable("APPDATA");
+        if (appData.HasContent())
+        {
+            string c = Path.Combine(appData, "npm", "npm.cmd");
+            if (await _fileUtil.Exists(c, cancellationToken).NoSync()) return c;
+        }
+
+        return null;
     }
 
     public async ValueTask<string> GetNodePath(string nodeCommand = "node", CancellationToken cancellationToken = default)
@@ -197,7 +320,8 @@ public sealed class NodeUtil : INodeUtil
     private async ValueTask LogVersion(string nodePath, CancellationToken cancellationToken)
     {
         string? version = await GetVersionAtPath(nodePath, cancellationToken).NoSync();
-        if (!string.IsNullOrWhiteSpace(version))
+
+        if (version.HasContent())
             _logger.LogInformation("Node.js found at {Path}, version {Version}.", nodePath, version);
     }
 
@@ -223,7 +347,7 @@ public sealed class NodeUtil : INodeUtil
 
     public async ValueTask<string?> TryLocate(string? minVersion = null, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(minVersion))
+        if (minVersion.IsNullOrWhiteSpace())
             return await TryLocateAny(cancellationToken).NoSync();
 
         if (!TryParseVersion(minVersion, out Version? required))
@@ -356,14 +480,73 @@ public sealed class NodeUtil : INodeUtil
         }
     }
 
+    public async ValueTask<string> NpmInstall(
+        string directory,
+        bool cleanInstall = false,          // true => npm ci, false => npm install
+        bool omitDevDependencies = false,   // adds --omit=dev
+        bool ignoreScripts = false,         // adds --ignore-scripts
+        bool noAudit = true,                // adds --no-audit (default true)
+        bool noFund = true,                 // adds --no-fund (default true)
+        CancellationToken cancellationToken = default)
+    {
+        if (directory.IsNullOrWhiteSpace())
+            throw new ArgumentException("Directory is required.", nameof(directory));
+
+        directory = Path.GetFullPath(directory);
+
+        if (!await _directoryUtil.Exists(directory, cancellationToken).NoSync())
+            throw new DirectoryNotFoundException($"Directory not found: {directory}");
+
+        // Ensure node is present (npm should come with it)
+        await EnsureInstalled(null, installIfMissing: true, cancellationToken).NoSync();
+
+        string packageJson = Path.Combine(directory, "package.json");
+
+        if (!await _fileUtil.Exists(packageJson, cancellationToken).NoSync())
+            _logger.LogWarning("npm install requested but package.json not found in {Directory}.", directory);
+
+        string npm = await GetNpmPath(cancellationToken).NoSync();
+
+        string args = cleanInstall ? "ci" : "install";
+
+        if (omitDevDependencies)
+            args += " --omit=dev";
+
+        if (ignoreScripts)
+            args += " --ignore-scripts";
+
+        if (noAudit)
+            args += " --no-audit";
+
+        if (noFund)
+            args += " --no-fund";
+
+        TimeSpan timeout = OperatingSystem.IsWindows() ? _npmInstallTimeoutWin : _npmInstallTimeoutUnix;
+
+        _logger.LogInformation("Running {Cmd} {Args} in {Directory}", npm, args, directory);
+
+        // working directory = target directory
+        string output = await _processUtil.StartAndGetOutput(
+            npm,
+            args,
+            directory,
+            timeout,
+            cancellationToken
+        ).NoSync();
+
+        return output;
+    }
+
     private async ValueTask<string?> ProbeHostedToolCache(Version target, CancellationToken cancellationToken)
     {
         string root = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? @"C:\hostedtoolcache\windows";
         string nodeRoot = Path.Combine(root, "Node");
-        if (!(await _directoryUtil.Exists(nodeRoot, cancellationToken)))
+
+        if (!await _directoryUtil.Exists(nodeRoot, cancellationToken).NoSync())
             return null;
 
-        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken);
+        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken).NoSync();
+
         foreach (string verDir in verDirs)
         {
             string? dirName = Path.GetFileName(verDir);
@@ -374,7 +557,8 @@ public sealed class NodeUtil : INodeUtil
                 continue;
 
             string candidate = Path.Combine(verDir, "x64", "node.exe");
-            if (File.Exists(candidate))
+
+            if (await _fileUtil.Exists(candidate, cancellationToken).NoSync())
                 return candidate;
         }
 
@@ -385,14 +569,17 @@ public sealed class NodeUtil : INodeUtil
     {
         string root = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? @"C:\hostedtoolcache\windows";
         string nodeRoot = Path.Combine(root, "Node");
-        if (!(await _directoryUtil.Exists(nodeRoot, cancellationToken)))
+
+        if (!await _directoryUtil.Exists(nodeRoot, cancellationToken).NoSync())
             return null;
 
-        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken);
+        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken).NoSync();
+
         foreach (string verDir in verDirs)
         {
             string candidate = Path.Combine(verDir, "x64", "node.exe");
-            if (File.Exists(candidate))
+
+            if (await _fileUtil.Exists(candidate, cancellationToken).NoSync())
                 return candidate;
         }
 
@@ -434,7 +621,6 @@ public sealed class NodeUtil : INodeUtil
             ReadOnlySpan<char> s = output.AsSpan();
             s = s.Trim();
 
-            // Find last newline (supports both \n and \r\n)
             int nl = s.LastIndexOf('\n');
             if (nl <= 0)
                 return null;
@@ -448,7 +634,6 @@ public sealed class NodeUtil : INodeUtil
             if (versionSpan[0] == 'v')
                 versionSpan = versionSpan[1..].Trim();
 
-            // Version.TryParse requires string
             if (!Version.TryParse(versionSpan.ToString(), out Version? v))
                 return null;
 
@@ -477,7 +662,6 @@ public sealed class NodeUtil : INodeUtil
         if (!s.IsEmpty && s[0] == 'v')
             s = s[1..].Trim();
 
-        // Normalize "20" -> "20.0" to satisfy Version.TryParse expectations
         if (s.IndexOf('.') < 0)
             return Version.TryParse($"{s}.0", out result);
 

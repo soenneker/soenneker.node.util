@@ -23,8 +23,14 @@ public sealed class NodeUtilTests : FixturedUnitTest
     }
 
     [LocalFact]
-    public async ValueTask GetUtil()
+    public async ValueTask EnsureInstalled()
     {
         string test = await _util.EnsureInstalled(cancellationToken: CancellationToken);
+    }
+
+    [LocalFact]
+    public async ValueTask NpmInstall()
+    {
+        string test = await _util.NpmInstall("", cancellationToken: CancellationToken);
     }
 }
