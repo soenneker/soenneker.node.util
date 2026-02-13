@@ -31,6 +31,6 @@ public sealed class NodeUtilTests : FixturedUnitTest
     [LocalFact]
     public async ValueTask NpmInstall()
     {
-        string test = await _util.NpmInstall("", cancellationToken: CancellationToken);
+        string test = await _util.NpmInstall("C:\\git\\Soenneker\\Quark\\soenneker.quark.gen.tailwind\\test\\Soenneker.Quark.Gen.Tailwind.Demo\\tailwind", cancellationToken: CancellationToken);
     }
 }
