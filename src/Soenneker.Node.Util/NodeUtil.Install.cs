@@ -12,7 +12,7 @@ using Soenneker.Hashing.XxHash;
 namespace Soenneker.Node.Util;
 
 /// <inheritdoc cref="INodeUtil"/>
-public sealed partial class NodeUtil : INodeUtil
+public sealed partial class NodeUtil
 {
     private const string _npmMarkerFileName = "npm-install.lockhash";
     
@@ -86,7 +86,7 @@ public sealed partial class NodeUtil : INodeUtil
     {
         bool latest = version is null;
         int major = version?.Major ?? 0;
-        string ver = major.ToString();
+        var ver = major.ToString();
 
         if (OperatingSystem.IsLinux())
         {

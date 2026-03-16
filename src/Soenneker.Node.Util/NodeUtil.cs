@@ -64,12 +64,7 @@ public sealed partial class NodeUtil : INodeUtil
     {
         string[] names = OperatingSystem.IsWindows() ? _npxNamesWindows : _npxNamesUnix;
 
-        return ResolveExecutable(
-            names,
-            defaultCommand: "npx",
-            windowsProbe: ProbeWindowsNpx,
-            macProbe: ProbeMacNpx,
-            linuxProbe: ProbeLinuxNpx,
+        return ResolveExecutable(names, defaultCommand: "npx", windowsProbe: ProbeWindowsNpx, macProbe: ProbeMacNpx, linuxProbe: ProbeLinuxNpx,
             cancellationToken);
     }
 
@@ -77,34 +72,28 @@ public sealed partial class NodeUtil : INodeUtil
     {
         string[] names = OperatingSystem.IsWindows() ? _npmNamesWindows : _npmNamesUnix;
 
-        return ResolveExecutable(
-            names,
-            defaultCommand: "npm",
-            windowsProbe: ProbeWindowsNpm,
-            macProbe: ProbeMacNpm,
-            linuxProbe: ProbeLinuxNpm,
+        return ResolveExecutable(names, defaultCommand: "npm", windowsProbe: ProbeWindowsNpm, macProbe: ProbeMacNpm, linuxProbe: ProbeLinuxNpm,
             cancellationToken);
     }
 
-    private async ValueTask<string> ResolveExecutable(
-        string[] names,
-        string defaultCommand,
-        Func<CancellationToken, ValueTask<string?>> windowsProbe,
-        Func<CancellationToken, ValueTask<string?>> macProbe,
-        Func<CancellationToken, ValueTask<string?>> linuxProbe,
-        CancellationToken cancellationToken)
+    private async ValueTask<string> ResolveExecutable(string[] names, string defaultCommand, Func<CancellationToken, ValueTask<string?>> windowsProbe,
+        Func<CancellationToken, ValueTask<string?>> macProbe, Func<CancellationToken, ValueTask<string?>> linuxProbe, CancellationToken cancellationToken)
     {
-        if (await TryResolveFromPathEnv(names, cancellationToken).NoSync() is { } fromPath)
+        if (await TryResolveFromPathEnv(names, cancellationToken)
+                .NoSync() is { } fromPath)
             return fromPath;
 
         string? osFound = null;
 
         if (OperatingSystem.IsWindows())
-            osFound = await windowsProbe(cancellationToken).NoSync();
+            osFound = await windowsProbe(cancellationToken)
+                .NoSync();
         else if (OperatingSystem.IsMacOS())
-            osFound = await macProbe(cancellationToken).NoSync();
+            osFound = await macProbe(cancellationToken)
+                .NoSync();
         else if (OperatingSystem.IsLinux())
-            osFound = await linuxProbe(cancellationToken).NoSync();
+            osFound = await linuxProbe(cancellationToken)
+                .NoSync();
 
         return osFound ?? defaultCommand;
     }
@@ -120,7 +109,7 @@ public sealed partial class NodeUtil : INodeUtil
 
             char sep = Path.PathSeparator;
 
-            int pos = 0;
+            var pos = 0;
 
             while (pos <= pathEnv.Length)
             {
@@ -137,17 +126,19 @@ public sealed partial class NodeUtil : INodeUtil
                     continue;
 
                 // Span is used only inside this block and is gone before any await
-                ReadOnlySpan<char> dirSpan = pathEnv.AsSpan(end - len, len).Trim();
+                ReadOnlySpan<char> dirSpan = pathEnv.AsSpan(end - len, len)
+                                                    .Trim();
                 if (dirSpan.IsEmpty)
                     continue;
 
-                string dir = dirSpan.ToString();
+                var dir = dirSpan.ToString();
 
-                for (int i = 0; i < names.Length; i++)
+                for (var i = 0; i < names.Length; i++)
                 {
                     string full = Path.Combine(dir, names[i]);
 
-                    if (await _fileUtil.Exists(full, cancellationToken).NoSync())
+                    if (await _fileUtil.Exists(full, cancellationToken)
+                                       .NoSync())
                         return full;
                 }
             }
@@ -162,29 +153,45 @@ public sealed partial class NodeUtil : INodeUtil
 
     private async ValueTask<string?> ProbeMacNpx(CancellationToken cancellationToken)
     {
-        if (await _fileUtil.Exists(_macNpx1, cancellationToken).NoSync()) return _macNpx1;
-        if (await _fileUtil.Exists(_macNpx2, cancellationToken).NoSync()) return _macNpx2;
+        if (await _fileUtil.Exists(_macNpx1, cancellationToken)
+                           .NoSync())
+            return _macNpx1;
+        if (await _fileUtil.Exists(_macNpx2, cancellationToken)
+                           .NoSync())
+            return _macNpx2;
         return null;
     }
 
     private async ValueTask<string?> ProbeLinuxNpx(CancellationToken cancellationToken)
     {
-        if (await _fileUtil.Exists(_linuxNpx1, cancellationToken).NoSync()) return _linuxNpx1;
-        if (await _fileUtil.Exists(_linuxNpx2, cancellationToken).NoSync()) return _linuxNpx2;
+        if (await _fileUtil.Exists(_linuxNpx1, cancellationToken)
+                           .NoSync())
+            return _linuxNpx1;
+        if (await _fileUtil.Exists(_linuxNpx2, cancellationToken)
+                           .NoSync())
+            return _linuxNpx2;
         return null;
     }
 
     private async ValueTask<string?> ProbeMacNpm(CancellationToken cancellationToken)
     {
-        if (await _fileUtil.Exists(_macNpm1, cancellationToken).NoSync()) return _macNpm1;
-        if (await _fileUtil.Exists(_macNpm2, cancellationToken).NoSync()) return _macNpm2;
+        if (await _fileUtil.Exists(_macNpm1, cancellationToken)
+                           .NoSync())
+            return _macNpm1;
+        if (await _fileUtil.Exists(_macNpm2, cancellationToken)
+                           .NoSync())
+            return _macNpm2;
         return null;
     }
 
     private async ValueTask<string?> ProbeLinuxNpm(CancellationToken cancellationToken)
     {
-        if (await _fileUtil.Exists(_linuxNpm1, cancellationToken).NoSync()) return _linuxNpm1;
-        if (await _fileUtil.Exists(_linuxNpm2, cancellationToken).NoSync()) return _linuxNpm2;
+        if (await _fileUtil.Exists(_linuxNpm1, cancellationToken)
+                           .NoSync())
+            return _linuxNpm1;
+        if (await _fileUtil.Exists(_linuxNpm2, cancellationToken)
+                           .NoSync())
+            return _linuxNpm2;
         return null;
     }
 
@@ -196,27 +203,37 @@ public sealed partial class NodeUtil : INodeUtil
         if (programFiles.HasContent())
         {
             string c1 = Path.Combine(programFiles, "nodejs", "npx.cmd");
-            if (await _fileUtil.Exists(c1, cancellationToken).NoSync()) return c1;
+            if (await _fileUtil.Exists(c1, cancellationToken)
+                               .NoSync())
+                return c1;
 
             string c2 = Path.Combine(programFiles, "nodejs", "npx.exe");
-            if (await _fileUtil.Exists(c2, cancellationToken).NoSync()) return c2;
+            if (await _fileUtil.Exists(c2, cancellationToken)
+                               .NoSync())
+                return c2;
         }
 
         string? localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
         if (localAppData.HasContent())
         {
             string c1 = Path.Combine(localAppData, "Programs", "node", "npx.cmd");
-            if (await _fileUtil.Exists(c1, cancellationToken).NoSync()) return c1;
+            if (await _fileUtil.Exists(c1, cancellationToken)
+                               .NoSync())
+                return c1;
 
             string c2 = Path.Combine(localAppData, "Programs", "node", "npx.exe");
-            if (await _fileUtil.Exists(c2, cancellationToken).NoSync()) return c2;
+            if (await _fileUtil.Exists(c2, cancellationToken)
+                               .NoSync())
+                return c2;
         }
 
         string? appData = Environment.GetEnvironmentVariable("APPDATA");
         if (appData.HasContent())
         {
             string c = Path.Combine(appData, "npm", "npx.cmd");
-            if (await _fileUtil.Exists(c, cancellationToken).NoSync()) return c;
+            if (await _fileUtil.Exists(c, cancellationToken)
+                               .NoSync())
+                return c;
         }
 
         return null;
@@ -228,27 +245,37 @@ public sealed partial class NodeUtil : INodeUtil
         if (programFiles.HasContent())
         {
             string c1 = Path.Combine(programFiles, "nodejs", "npm.cmd");
-            if (await _fileUtil.Exists(c1, cancellationToken).NoSync()) return c1;
+            if (await _fileUtil.Exists(c1, cancellationToken)
+                               .NoSync())
+                return c1;
 
             string c2 = Path.Combine(programFiles, "nodejs", "npm.exe");
-            if (await _fileUtil.Exists(c2, cancellationToken).NoSync()) return c2;
+            if (await _fileUtil.Exists(c2, cancellationToken)
+                               .NoSync())
+                return c2;
         }
 
         string? localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
         if (localAppData.HasContent())
         {
             string c1 = Path.Combine(localAppData, "Programs", "node", "npm.cmd");
-            if (await _fileUtil.Exists(c1, cancellationToken).NoSync()) return c1;
+            if (await _fileUtil.Exists(c1, cancellationToken)
+                               .NoSync())
+                return c1;
 
             string c2 = Path.Combine(localAppData, "Programs", "node", "npm.exe");
-            if (await _fileUtil.Exists(c2, cancellationToken).NoSync()) return c2;
+            if (await _fileUtil.Exists(c2, cancellationToken)
+                               .NoSync())
+                return c2;
         }
 
         string? appData = Environment.GetEnvironmentVariable("APPDATA");
         if (appData.HasContent())
         {
             string c = Path.Combine(appData, "npm", "npm.cmd");
-            if (await _fileUtil.Exists(c, cancellationToken).NoSync()) return c;
+            if (await _fileUtil.Exists(c, cancellationToken)
+                               .NoSync())
+                return c;
         }
 
         return null;
@@ -256,20 +283,16 @@ public sealed partial class NodeUtil : INodeUtil
 
     public async ValueTask<string> GetNodePath(string nodeCommand = "node", CancellationToken cancellationToken = default)
     {
-        string result = await _processUtil.StartAndGetOutput(
-            nodeCommand,
-            _scriptExecPath,
-            "",
-            _probeTimeout,
-            cancellationToken
-        ).NoSync();
+        string result = await _processUtil.StartAndGetOutput(nodeCommand, _scriptExecPath, "", _probeTimeout, cancellationToken)
+                                          .NoSync();
 
         return result.Trim();
     }
-    
+
     private async ValueTask LogVersion(string nodePath, CancellationToken cancellationToken)
     {
-        string? version = await GetVersionAtPath(nodePath, cancellationToken).NoSync();
+        string? version = await GetVersionAtPath(nodePath, cancellationToken)
+            .NoSync();
 
         if (version.HasContent())
             _logger.LogInformation("Node.js found at {Path}, version {Version}.", nodePath, version);
@@ -279,13 +302,8 @@ public sealed partial class NodeUtil : INodeUtil
     {
         try
         {
-            string output = await _processUtil.StartAndGetOutput(
-                nodePath,
-                _scriptVersion,
-                "",
-                _probeTimeout,
-                ct
-            ).NoSync();
+            string output = await _processUtil.StartAndGetOutput(nodePath, _scriptVersion, "", _probeTimeout, ct)
+                                              .NoSync();
 
             return output.Trim();
         }
@@ -298,22 +316,25 @@ public sealed partial class NodeUtil : INodeUtil
     public async ValueTask<string?> TryLocate(string? minVersion = null, CancellationToken cancellationToken = default)
     {
         if (minVersion.IsNullOrWhiteSpace())
-            return await TryLocateAny(cancellationToken).NoSync();
+            return await TryLocateAny(cancellationToken)
+                .NoSync();
 
         if (!TryParseVersion(minVersion, out Version? required))
             return null;
 
         if (OperatingSystem.IsWindows())
         {
-            if (await ProbeHostedToolCache(required!, cancellationToken).NoSync() is { } cached)
+            if (await ProbeHostedToolCache(required!, cancellationToken)
+                    .NoSync() is { } cached)
                 return cached;
         }
 
         string[] commands = OperatingSystem.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
 
-        for (int i = 0; i < commands.Length; i++)
+        for (var i = 0; i < commands.Length; i++)
         {
-            if (await Probe(commands[i], required!, cancellationToken).NoSync() is { } found)
+            if (await Probe(commands[i], required!, cancellationToken)
+                    .NoSync() is { } found)
                 return found;
         }
 
@@ -324,15 +345,17 @@ public sealed partial class NodeUtil : INodeUtil
     {
         if (OperatingSystem.IsWindows())
         {
-            if (await ProbeHostedToolCacheAny(cancellationToken).NoSync() is { } cached)
+            if (await ProbeHostedToolCacheAny(cancellationToken)
+                    .NoSync() is { } cached)
                 return cached;
         }
 
         string[] commands = OperatingSystem.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
 
-        for (int i = 0; i < commands.Length; i++)
+        for (var i = 0; i < commands.Length; i++)
         {
-            if (await ProbeAny(commands[i], cancellationToken).NoSync() is { } found)
+            if (await ProbeAny(commands[i], cancellationToken)
+                    .NoSync() is { } found)
                 return found;
         }
 
@@ -344,10 +367,12 @@ public sealed partial class NodeUtil : INodeUtil
         string root = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? @"C:\hostedtoolcache\windows";
         string nodeRoot = Path.Combine(root, "Node");
 
-        if (!await _directoryUtil.Exists(nodeRoot, cancellationToken).NoSync())
+        if (!await _directoryUtil.Exists(nodeRoot, cancellationToken)
+                                 .NoSync())
             return null;
 
-        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken).NoSync();
+        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken)
+                                                   .NoSync();
 
         foreach (string verDir in verDirs)
         {
@@ -360,7 +385,8 @@ public sealed partial class NodeUtil : INodeUtil
 
             string candidate = Path.Combine(verDir, "x64", "node.exe");
 
-            if (await _fileUtil.Exists(candidate, cancellationToken).NoSync())
+            if (await _fileUtil.Exists(candidate, cancellationToken)
+                               .NoSync())
                 return candidate;
         }
 
@@ -372,16 +398,19 @@ public sealed partial class NodeUtil : INodeUtil
         string root = Environment.GetEnvironmentVariable("AGENT_TOOLSDIRECTORY") ?? @"C:\hostedtoolcache\windows";
         string nodeRoot = Path.Combine(root, "Node");
 
-        if (!await _directoryUtil.Exists(nodeRoot, cancellationToken).NoSync())
+        if (!await _directoryUtil.Exists(nodeRoot, cancellationToken)
+                                 .NoSync())
             return null;
 
-        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken).NoSync();
+        List<string> verDirs = await _directoryUtil.GetAllDirectories(nodeRoot, cancellationToken)
+                                                   .NoSync();
 
         foreach (string verDir in verDirs)
         {
             string candidate = Path.Combine(verDir, "x64", "node.exe");
 
-            if (await _fileUtil.Exists(candidate, cancellationToken).NoSync())
+            if (await _fileUtil.Exists(candidate, cancellationToken)
+                               .NoSync())
                 return candidate;
         }
 
@@ -392,13 +421,8 @@ public sealed partial class NodeUtil : INodeUtil
     {
         try
         {
-            string output = await _processUtil.StartAndGetOutput(
-                command,
-                _scriptExecPath,
-                "",
-                _probeTimeout,
-                ct
-            ).NoSync();
+            string output = await _processUtil.StartAndGetOutput(command, _scriptExecPath, "", _probeTimeout, ct)
+                                              .NoSync();
 
             return output.Trim();
         }
@@ -412,13 +436,8 @@ public sealed partial class NodeUtil : INodeUtil
     {
         try
         {
-            string output = await _processUtil.StartAndGetOutput(
-                command,
-                _scriptExecPathAndVersion,
-                "",
-                _probeTimeout,
-                ct
-            ).NoSync();
+            string output = await _processUtil.StartAndGetOutput(command, _scriptExecPathAndVersion, "", _probeTimeout, ct)
+                                              .NoSync();
 
             ReadOnlySpan<char> s = output.AsSpan();
             s = s.Trim();
@@ -427,14 +446,17 @@ public sealed partial class NodeUtil : INodeUtil
             if (nl <= 0)
                 return null;
 
-            ReadOnlySpan<char> execPathSpan = s[..nl].Trim();
-            ReadOnlySpan<char> versionSpan = s[(nl + 1)..].Trim();
+            ReadOnlySpan<char> execPathSpan = s[..nl]
+                .Trim();
+            ReadOnlySpan<char> versionSpan = s[(nl + 1)..]
+                .Trim();
 
             if (execPathSpan.IsEmpty || versionSpan.IsEmpty)
                 return null;
 
             if (versionSpan[0] == 'v')
-                versionSpan = versionSpan[1..].Trim();
+                versionSpan = versionSpan[1..]
+                    .Trim();
 
             if (!Version.TryParse(versionSpan.ToString(), out Version? v))
                 return null;
@@ -460,9 +482,11 @@ public sealed partial class NodeUtil : INodeUtil
         if (string.IsNullOrWhiteSpace(version))
             return false;
 
-        ReadOnlySpan<char> s = version.AsSpan().Trim();
+        ReadOnlySpan<char> s = version.AsSpan()
+                                      .Trim();
         if (!s.IsEmpty && s[0] == 'v')
-            s = s[1..].Trim();
+            s = s[1..]
+                .Trim();
 
         if (s.IndexOf('.') < 0)
             return Version.TryParse($"{s}.0", out result);
