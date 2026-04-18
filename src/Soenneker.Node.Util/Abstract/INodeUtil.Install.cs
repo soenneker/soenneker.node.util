@@ -67,4 +67,6 @@ public partial interface INodeUtil
         CancellationToken cancellationToken = default);
 
     ValueTask<string> InstallPnpm(bool force = false, CancellationToken cancellationToken = default);
+
+    ValueTask RunNpmCommand(string args, CancellationToken ct);
 }

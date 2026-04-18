@@ -372,7 +372,7 @@ public sealed partial class NodeUtil
         return pnpmPath;
     }
 
-    private async ValueTask RunNpmCommand(string args, CancellationToken ct)
+    public async ValueTask RunNpmCommand(string args, CancellationToken ct)
     {
         string npm = await GetNpmPath(ct).NoSync();
 
