@@ -58,5 +58,9 @@ public partial interface INodeUtil
     /// </returns>
     ValueTask<string?> TryLocateAny(CancellationToken cancellationToken = default);
 
+    ValueTask<string> GetPnpmPath(CancellationToken cancellationToken = default);
+
+    ValueTask<string> GetGlobalToolPath(string toolName, CancellationToken cancellationToken = default);
+
     ValueTask<string> GetNpmGlobalBinDirectory(CancellationToken cancellationToken = default);
 }

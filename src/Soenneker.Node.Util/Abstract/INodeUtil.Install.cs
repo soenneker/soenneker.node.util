@@ -65,4 +65,6 @@ public partial interface INodeUtil
         bool noFund = true,
         bool skipIfUpToDate = true,
         CancellationToken cancellationToken = default);
+
+    ValueTask<string> InstallPnpm(bool force = false, CancellationToken cancellationToken = default);
 }

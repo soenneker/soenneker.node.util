@@ -10,6 +10,7 @@ using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.File.Abstract;
 using Soenneker.Utils.Process.Abstract;
 using Soenneker.Extensions.String;
+using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Node.Util;
 
@@ -31,16 +32,8 @@ public sealed partial class NodeUtil : INodeUtil
     private static readonly string[] _nodeCommandsWindows = ["node", "node.exe"];
     private static readonly string[] _nodeCommandsUnix = ["node", "nodejs"];
 
-    private static readonly string[] _npxNamesWindows = ["npx.cmd", "npx.exe", "npx"];
-    private static readonly string[] _npxNamesUnix = ["npx"];
-
     private static readonly string[] _npmNamesWindows = ["npm.cmd", "npm.exe", "npm"];
     private static readonly string[] _npmNamesUnix = ["npm"];
-
-    private const string _macNpx1 = "/usr/local/bin/npx";
-    private const string _macNpx2 = "/opt/homebrew/bin/npx";
-    private const string _linuxNpx1 = "/usr/bin/npx";
-    private const string _linuxNpx2 = "/usr/local/bin/npx";
 
     private const string _macNpm1 = "/usr/local/bin/npm";
     private const string _macNpm2 = "/opt/homebrew/bin/npm";
@@ -62,15 +55,12 @@ public sealed partial class NodeUtil : INodeUtil
 
     public ValueTask<string> GetNpxPath(CancellationToken cancellationToken = default)
     {
-        string[] names = OperatingSystem.IsWindows() ? _npxNamesWindows : _npxNamesUnix;
-
-        return ResolveExecutable(names, defaultCommand: "npx", windowsProbe: ProbeWindowsNpx, macProbe: ProbeMacNpx, linuxProbe: ProbeLinuxNpx,
-            cancellationToken);
+        return GetGlobalToolPath("npx", cancellationToken);
     }
 
     public ValueTask<string> GetNpmPath(CancellationToken cancellationToken = default)
     {
-        string[] names = OperatingSystem.IsWindows() ? _npmNamesWindows : _npmNamesUnix;
+        string[] names = RuntimeUtil.IsWindows() ? _npmNamesWindows : _npmNamesUnix;
 
         return ResolveExecutable(names, defaultCommand: "npm", windowsProbe: ProbeWindowsNpm, macProbe: ProbeMacNpm, linuxProbe: ProbeLinuxNpm,
             cancellationToken);
@@ -85,13 +75,13 @@ public sealed partial class NodeUtil : INodeUtil
 
         string? osFound = null;
 
-        if (OperatingSystem.IsWindows())
+        if (RuntimeUtil.IsWindows())
             osFound = await windowsProbe(cancellationToken)
                 .NoSync();
-        else if (OperatingSystem.IsMacOS())
+        else if (RuntimeUtil.IsMacOs())
             osFound = await macProbe(cancellationToken)
                 .NoSync();
-        else if (OperatingSystem.IsLinux())
+        else if (RuntimeUtil.IsLinux())
             osFound = await linuxProbe(cancellationToken)
                 .NoSync();
 
@@ -151,28 +141,6 @@ public sealed partial class NodeUtil : INodeUtil
         return null;
     }
 
-    private async ValueTask<string?> ProbeMacNpx(CancellationToken cancellationToken)
-    {
-        if (await _fileUtil.Exists(_macNpx1, cancellationToken)
-                           .NoSync())
-            return _macNpx1;
-        if (await _fileUtil.Exists(_macNpx2, cancellationToken)
-                           .NoSync())
-            return _macNpx2;
-        return null;
-    }
-
-    private async ValueTask<string?> ProbeLinuxNpx(CancellationToken cancellationToken)
-    {
-        if (await _fileUtil.Exists(_linuxNpx1, cancellationToken)
-                           .NoSync())
-            return _linuxNpx1;
-        if (await _fileUtil.Exists(_linuxNpx2, cancellationToken)
-                           .NoSync())
-            return _linuxNpx2;
-        return null;
-    }
-
     private async ValueTask<string?> ProbeMacNpm(CancellationToken cancellationToken)
     {
         if (await _fileUtil.Exists(_macNpm1, cancellationToken)
@@ -192,50 +160,6 @@ public sealed partial class NodeUtil : INodeUtil
         if (await _fileUtil.Exists(_linuxNpm2, cancellationToken)
                            .NoSync())
             return _linuxNpm2;
-        return null;
-    }
-
-    private async ValueTask<string?> ProbeWindowsNpx(CancellationToken cancellationToken)
-    {
-        // Probe common Windows locations without building a list
-
-        string? programFiles = Environment.GetEnvironmentVariable("ProgramFiles");
-        if (programFiles.HasContent())
-        {
-            string c1 = Path.Combine(programFiles, "nodejs", "npx.cmd");
-            if (await _fileUtil.Exists(c1, cancellationToken)
-                               .NoSync())
-                return c1;
-
-            string c2 = Path.Combine(programFiles, "nodejs", "npx.exe");
-            if (await _fileUtil.Exists(c2, cancellationToken)
-                               .NoSync())
-                return c2;
-        }
-
-        string? localAppData = Environment.GetEnvironmentVariable("LOCALAPPDATA");
-        if (localAppData.HasContent())
-        {
-            string c1 = Path.Combine(localAppData, "Programs", "node", "npx.cmd");
-            if (await _fileUtil.Exists(c1, cancellationToken)
-                               .NoSync())
-                return c1;
-
-            string c2 = Path.Combine(localAppData, "Programs", "node", "npx.exe");
-            if (await _fileUtil.Exists(c2, cancellationToken)
-                               .NoSync())
-                return c2;
-        }
-
-        string? appData = Environment.GetEnvironmentVariable("APPDATA");
-        if (appData.HasContent())
-        {
-            string c = Path.Combine(appData, "npm", "npx.cmd");
-            if (await _fileUtil.Exists(c, cancellationToken)
-                               .NoSync())
-                return c;
-        }
-
         return null;
     }
 
@@ -472,16 +396,18 @@ public sealed partial class NodeUtil : INodeUtil
         }
     }
 
+    public ValueTask<string> GetPnpmPath(CancellationToken cancellationToken = default)
+    {
+        return GetGlobalToolPath("pnpm", cancellationToken);
+    }
+
     public async ValueTask<string> GetNpmGlobalBinDirectory(CancellationToken cancellationToken = default)
     {
-        string npmPath = await GetNpmPath(cancellationToken).NoSync();
+        string npmPath = await GetNpmPath(cancellationToken)
+            .NoSync();
 
-        string output = await _processUtil.StartAndGetOutput(
-            npmPath,
-            "bin -g",
-            "",
-            _probeTimeout,
-            cancellationToken).NoSync();
+        string output = await _processUtil.StartAndGetOutput(npmPath, "bin -g", "", _probeTimeout, cancellationToken)
+                                          .NoSync();
 
         string dir = output.Trim();
 
@@ -491,6 +417,21 @@ public sealed partial class NodeUtil : INodeUtil
         return dir;
     }
 
+    public async ValueTask<string> GetGlobalToolPath(string toolName, CancellationToken cancellationToken = default)
+    {
+        string directory = await GetNpmGlobalBinDirectory(cancellationToken)
+            .NoSync();
+
+        string fileName = RuntimeUtil.IsWindows() ? $"{toolName}.cmd" : toolName;
+        string path = Path.Combine(directory, fileName);
+
+        if (!await _fileUtil.Exists(path, cancellationToken)
+                            .NoSync())
+            throw new FileNotFoundException($"Global tool was not found at expected path: {path}", path);
+
+        return path;
+    }
+
     private static bool MatchMajorMinor(Version found, Version target) =>
         found.Major == target.Major && (target.Minor < 1 || found.Minor == target.Minor);
 
@@ -498,7 +439,7 @@ public sealed partial class NodeUtil : INodeUtil
     {
         result = null;
 
-        if (string.IsNullOrWhiteSpace(version))
+        if (version.IsNullOrWhiteSpace())
             return false;
 
         ReadOnlySpan<char> s = version.AsSpan()

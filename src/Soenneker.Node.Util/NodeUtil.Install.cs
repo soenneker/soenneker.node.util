@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
 using Soenneker.Hashing.XxHash;
+using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Node.Util;
 
@@ -336,6 +337,51 @@ public sealed partial class NodeUtil
             return packageJson;
 
         return null;
+    }
+
+    public async ValueTask<string> InstallPnpm(bool force = false, CancellationToken cancellationToken = default)
+    {
+        // Ensure Node/npm exists first
+        await EnsureInstalled(null, installIfMissing: true, cancellationToken).NoSync();
+
+        if (!force)
+        {
+            try
+            {
+                string existing = await GetPnpmPath(cancellationToken).NoSync();
+
+                if (!existing.IsNullOrWhiteSpace())
+                {
+                    _logger.LogInformation("pnpm already available at {Path}", existing);
+                    return existing;
+                }
+            }
+            catch
+            {
+                // pnpm not found, continue to install
+            }
+        }
+
+        await RunNpmCommand("install -g pnpm", cancellationToken).NoSync();
+
+        // Resolve after install
+        string pnpmPath = await GetPnpmPath(cancellationToken).NoSync();
+
+        _logger.LogInformation("pnpm installed at {Path}", pnpmPath);
+
+        return pnpmPath;
+    }
+
+    private async ValueTask RunNpmCommand(string args, CancellationToken ct)
+    {
+        string npm = await GetNpmPath(ct).NoSync();
+
+        await _processUtil.StartAndGetOutput(
+            npm,
+            args,
+            "",
+            _npmInstallTimeoutWin,
+            ct).NoSync();
     }
 
     private async ValueTask<string> ComputeHash(string filePath, CancellationToken ct)
