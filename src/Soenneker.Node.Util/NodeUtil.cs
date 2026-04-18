@@ -403,18 +403,23 @@ public sealed partial class NodeUtil : INodeUtil
 
     public async ValueTask<string> GetNpmGlobalBinDirectory(CancellationToken cancellationToken = default)
     {
-        string npmPath = await GetNpmPath(cancellationToken)
-            .NoSync();
+        string npmPath = await GetNpmPath(cancellationToken).NoSync();
 
-        string output = await _processUtil.StartAndGetOutput(npmPath, "bin -g", "", _probeTimeout, cancellationToken)
-                                          .NoSync();
+        string output = await _processUtil.StartAndGetOutput(
+            npmPath,
+            "prefix -g",
+            "",
+            _probeTimeout,
+            cancellationToken).NoSync();
 
-        string dir = output.Trim();
+        string prefix = output.Trim();
 
-        if (dir.IsNullOrWhiteSpace())
-            throw new InvalidOperationException("Could not resolve npm global bin directory.");
+        if (prefix.IsNullOrWhiteSpace())
+            throw new InvalidOperationException("Could not resolve npm global prefix.");
 
-        return dir;
+        return RuntimeUtil.IsWindows()
+            ? prefix
+            : Path.Combine(prefix, "bin");
     }
 
     public async ValueTask<string> GetGlobalToolPath(string toolName, CancellationToken cancellationToken = default)
