@@ -472,6 +472,25 @@ public sealed partial class NodeUtil : INodeUtil
         }
     }
 
+    public async ValueTask<string> GetNpmGlobalBinDirectory(CancellationToken cancellationToken = default)
+    {
+        string npmPath = await GetNpmPath(cancellationToken).NoSync();
+
+        string output = await _processUtil.StartAndGetOutput(
+            npmPath,
+            "bin -g",
+            "",
+            _probeTimeout,
+            cancellationToken).NoSync();
+
+        string dir = output.Trim();
+
+        if (dir.IsNullOrWhiteSpace())
+            throw new InvalidOperationException("Could not resolve npm global bin directory.");
+
+        return dir;
+    }
+
     private static bool MatchMajorMinor(Version found, Version target) =>
         found.Major == target.Major && (target.Minor < 1 || found.Minor == target.Minor);
 

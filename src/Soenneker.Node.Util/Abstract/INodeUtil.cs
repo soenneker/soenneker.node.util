@@ -57,4 +57,6 @@ public partial interface INodeUtil
     /// The resolved Node.js executable path if found; otherwise <see langword="null"/>.
     /// </returns>
     ValueTask<string?> TryLocateAny(CancellationToken cancellationToken = default);
+
+    ValueTask<string> GetNpmGlobalBinDirectory(CancellationToken cancellationToken = default);
 }
