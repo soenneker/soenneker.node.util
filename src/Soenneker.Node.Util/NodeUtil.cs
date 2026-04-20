@@ -53,9 +53,23 @@ public sealed partial class NodeUtil : INodeUtil
         _fileUtil = fileUtil;
     }
 
-    public ValueTask<string> GetNpxPath(CancellationToken cancellationToken = default)
+    public async ValueTask<string> GetNpxPath(CancellationToken cancellationToken = default)
     {
-        return GetGlobalToolPath("npx", cancellationToken);
+        string npmPath = await GetNpmPath(cancellationToken).NoSync();
+
+        string? dir = Path.GetDirectoryName(npmPath);
+
+        if (dir == null)
+            return "npx";
+
+        string fileName = RuntimeUtil.IsWindows() ? "npx.cmd" : "npx";
+        string candidate = Path.Combine(dir, fileName);
+
+        if (await _fileUtil.Exists(candidate, cancellationToken).NoSync())
+            return candidate;
+
+        // fallback to PATH
+        return "npx";
     }
 
     public ValueTask<string> GetNpmPath(CancellationToken cancellationToken = default)
