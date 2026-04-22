@@ -1,34 +1,33 @@
 using System.Threading.Tasks;
-using Soenneker.Facts.Local;
+using Soenneker.Tests.Attributes.Local;
 using Soenneker.Node.Util.Abstract;
-using Soenneker.Tests.FixturedUnit;
-using Xunit;
+using Soenneker.Tests.HostedUnit;
 
 namespace Soenneker.Node.Util.Tests;
 
-[Collection("Collection")]
-public sealed class NodeUtilTests : FixturedUnitTest
+[ClassDataSource<Host>(Shared = SharedType.PerTestSession)]
+public sealed class NodeUtilTests : HostedUnitTest
 {
     private readonly INodeUtil _util;
 
-    public NodeUtilTests(Fixture fixture, ITestOutputHelper output) : base(fixture, output)
+    public NodeUtilTests(Host host) : base(host)
     {
         _util = Resolve<INodeUtil>(true);
     }
 
-    [Fact]
+    [Test]
     public void Default()
     {
 
     }
 
-    [LocalFact]
+    [LocalOnly]
     public async ValueTask EnsureInstalled()
     {
         string test = await _util.EnsureInstalled(cancellationToken: CancellationToken);
     }
 
-    [LocalFact]
+    [LocalOnly]
     public async ValueTask NpmInstall()
     {
         string test = await _util.NpmInstall("C:\\git\\Soenneker\\Quark\\soenneker.quark.gen.tailwind\\test\\Soenneker.Quark.Gen.Tailwind.Demo\\tailwind", cancellationToken: CancellationToken);
