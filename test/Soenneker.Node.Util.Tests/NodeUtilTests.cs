@@ -24,12 +24,13 @@ public sealed class NodeUtilTests : HostedUnitTest
     [LocalOnly]
     public async ValueTask EnsureInstalled()
     {
-        string test = await _util.EnsureInstalled(cancellationToken: CancellationToken);
+        string test = await _util.EnsureInstalled(cancellationToken: System.Threading.CancellationToken.None);
     }
 
     [LocalOnly]
     public async ValueTask NpmInstall()
     {
-        string test = await _util.NpmInstall("C:\\git\\Soenneker\\Quark\\soenneker.quark.gen.tailwind\\test\\Soenneker.Quark.Gen.Tailwind.Demo\\tailwind", cancellationToken: CancellationToken);
+        string test = await _util.NpmInstall("C:\\git\\Soenneker\\Quark\\soenneker.quark.gen.tailwind\\test\\Soenneker.Quark.Gen.Tailwind.Demo\\tailwind", cancellationToken: System.Threading.CancellationToken.None);
     }
 }
+
