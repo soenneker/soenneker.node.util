@@ -66,7 +66,19 @@ public partial interface INodeUtil
         bool skipIfUpToDate = true,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Executes the install pnpm operation.
+    /// </summary>
+    /// <param name="force">The force.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<string> InstallPnpm(bool force = false, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Executes the run npm command operation.
+    /// </summary>
+    /// <param name="args">The args.</param>
+    /// <param name="ct">The ct.</param>
+    /// <returns>A task that represents the asynchronous operation.</returns>
     ValueTask RunNpmCommand(string args, CancellationToken ct);
 }

@@ -53,6 +53,11 @@ public sealed partial class NodeUtil : INodeUtil
         _fileUtil = fileUtil;
     }
 
+    /// <summary>
+    /// Gets npx path.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetNpxPath(CancellationToken cancellationToken = default)
     {
         string npmPath = await GetNpmPath(cancellationToken).NoSync();
@@ -72,6 +77,11 @@ public sealed partial class NodeUtil : INodeUtil
         return "npx";
     }
 
+    /// <summary>
+    /// Gets npm path.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public ValueTask<string> GetNpmPath(CancellationToken cancellationToken = default)
     {
         string[] names = RuntimeUtil.IsWindows() ? _npmNamesWindows : _npmNamesUnix;
@@ -219,6 +229,12 @@ public sealed partial class NodeUtil : INodeUtil
         return null;
     }
 
+    /// <summary>
+    /// Gets node path.
+    /// </summary>
+    /// <param name="nodeCommand">The node command.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetNodePath(string nodeCommand = "node", CancellationToken cancellationToken = default)
     {
         string result = await _processUtil.StartAndGetOutput(nodeCommand, _scriptExecPath, "", _probeTimeout, cancellationToken)
@@ -251,6 +267,12 @@ public sealed partial class NodeUtil : INodeUtil
         }
     }
 
+    /// <summary>
+    /// Attempts to execute locate.
+    /// </summary>
+    /// <param name="minVersion">The min version.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string?> TryLocate(string? minVersion = null, CancellationToken cancellationToken = default)
     {
         if (minVersion.IsNullOrWhiteSpace())
@@ -279,6 +301,11 @@ public sealed partial class NodeUtil : INodeUtil
         return null;
     }
 
+    /// <summary>
+    /// Attempts to execute locate any.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string?> TryLocateAny(CancellationToken cancellationToken = default)
     {
         if (OperatingSystem.IsWindows())
@@ -410,11 +437,21 @@ public sealed partial class NodeUtil : INodeUtil
         }
     }
 
+    /// <summary>
+    /// Gets pnpm path.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public ValueTask<string> GetPnpmPath(CancellationToken cancellationToken = default)
     {
         return GetGlobalToolPath("pnpm", cancellationToken);
     }
 
+    /// <summary>
+    /// Gets npm global bin directory.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetNpmGlobalBinDirectory(CancellationToken cancellationToken = default)
     {
         string npmPath = await GetNpmPath(cancellationToken).NoSync();
@@ -436,6 +473,12 @@ public sealed partial class NodeUtil : INodeUtil
             : Path.Combine(prefix, "bin");
     }
 
+    /// <summary>
+    /// Gets global tool path.
+    /// </summary>
+    /// <param name="toolName">The tool name.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetGlobalToolPath(string toolName, CancellationToken cancellationToken = default)
     {
         string directory = await GetNpmGlobalBinDirectory(cancellationToken)

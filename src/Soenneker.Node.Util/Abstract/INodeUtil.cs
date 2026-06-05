@@ -58,9 +58,25 @@ public partial interface INodeUtil
     /// </returns>
     ValueTask<string?> TryLocateAny(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets pnpm path.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<string> GetPnpmPath(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets global tool path.
+    /// </summary>
+    /// <param name="toolName">The tool name.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<string> GetGlobalToolPath(string toolName, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets npm global bin directory.
+    /// </summary>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A task containing the result of the operation.</returns>
     ValueTask<string> GetNpmGlobalBinDirectory(CancellationToken cancellationToken = default);
 }
