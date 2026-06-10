@@ -49,7 +49,7 @@
 
     <ItemGroup>
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="4.0.57" />
-        <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.867" />
+        <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.868" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2170" />
         <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1481" />
     </ItemGroup>
