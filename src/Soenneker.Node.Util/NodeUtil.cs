@@ -423,7 +423,7 @@ public sealed partial class NodeUtil : INodeUtil
                 versionSpan = versionSpan[1..]
                     .Trim();
 
-            if (!Version.TryParse(versionSpan.ToString(), out Version? v))
+            if (!Version.TryParse(versionSpan, out Version? v))
                 return null;
 
             if (!MatchMajorMinor(v, target))
@@ -511,8 +511,14 @@ public sealed partial class NodeUtil : INodeUtil
                 .Trim();
 
         if (s.IndexOf('.') < 0)
-            return Version.TryParse($"{s}.0", out result);
+        {
+            if (!int.TryParse(s, out int major) || major < 0)
+                return false;
 
-        return Version.TryParse(s.ToString(), out result);
+            result = new Version(major, 0);
+            return true;
+        }
+
+        return Version.TryParse(s, out result);
     }
 }
