@@ -15,6 +15,8 @@ public static class NodeUtilRegistrar
     /// <summary>
     /// Adds <see cref="INodeUtil"/> as a singleton service. <para/>
     /// </summary>
+    /// <param name="services">Service collection that receives the registration.</param>
+    /// <returns>The same service collection, so additional registrations can be chained.</returns>
     public static IServiceCollection AddNodeUtilAsSingleton(this IServiceCollection services)
     {
         services.AddFileUtilAsSingleton().AddDirectoryUtilAsSingleton().AddProcessUtilAsSingleton().TryAddSingleton<INodeUtil, NodeUtil>();
@@ -25,6 +27,8 @@ public static class NodeUtilRegistrar
     /// <summary>
     /// Adds <see cref="INodeUtil"/> as a scoped service. <para/>
     /// </summary>
+    /// <param name="services">Service collection that receives the registration.</param>
+    /// <returns>The same service collection, so additional registrations can be chained.</returns>
     public static IServiceCollection AddNodeUtilAsScoped(this IServiceCollection services)
     {
         services.AddFileUtilAsScoped().AddDirectoryUtilAsScoped().AddProcessUtilAsScoped().TryAddScoped<INodeUtil, NodeUtil>();

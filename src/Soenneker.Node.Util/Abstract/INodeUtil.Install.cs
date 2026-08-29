@@ -30,11 +30,9 @@ public partial interface INodeUtil
     /// <summary>
     /// Attempts to install Node.js.
     /// </summary>
-    /// <param name="version">
-    /// The target version to install. When <see langword="null"/>, installs the latest available version.
-    /// Platform-specific installers may only honor the major version (for example <c>20</c>).
-    /// </param>
+    /// <param name="version">The target version to install. When <see langword="null"/>, installs the latest available version. Platform-specific installers may only honor the major version (for example <c>20</c>).</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
+    /// <returns>A task that completes when the try install operation is complete.</returns>
     /// <remarks>
     /// Installation strategy is OS-specific (for example: apt-get on Linux, winget/choco on Windows, brew on macOS).
     /// This method may require elevated privileges depending on the environment.
@@ -44,17 +42,16 @@ public partial interface INodeUtil
     /// <summary>
     /// Runs <c>npm install</c> or <c>npm ci</c> in the specified directory.
     /// </summary>
-    /// <param name="directory">The directory containing the npm project.</param>
-    /// <param name="cleanInstall">
-    /// When <see langword="true"/>, runs <c>npm ci</c>; otherwise runs <c>npm install</c>.
-    /// </param>
+    /// <param name="directory">Directory to read from or write to.</param>
+    /// <param name="cleanInstall">When <see langword="true"/>, runs <c>npm ci</c>; otherwise runs <c>npm install</c>.</param>
     /// <param name="omitDevDependencies">When <see langword="true"/>, adds <c>--omit=dev</c>.</param>
     /// <param name="ignoreScripts">When <see langword="true"/>, adds <c>--ignore-scripts</c>.</param>
     /// <param name="noAudit">When <see langword="true"/>, adds <c>--no-audit</c>.</param>
     /// <param name="noFund">When <see langword="true"/>, adds <c>--no-fund</c>.</param>
+    /// <param name="skipIfUpToDate">Whether skip if up to date.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>The captured stdout/stderr output from the npm command.</returns>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="directory"/> is null/empty/whitespace.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="directory"/> is empty or invalid.</exception>
     /// <exception cref="DirectoryNotFoundException">Thrown when <paramref name="directory"/> does not exist.</exception>
     ValueTask<string> NpmInstall(
         string directory,
@@ -67,18 +64,18 @@ public partial interface INodeUtil
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Executes the install pnpm operation.
+    /// Installs pnpm.
     /// </summary>
-    /// <param name="force">The force.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
+    /// <param name="force">Whether force.</param>
+    /// <param name="cancellationToken">Token used to cancel the operation.</param>
+    /// <returns>A task whose result is the text returned by install Pnpm.</returns>
     ValueTask<string> InstallPnpm(bool force = false, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Executes the run npm command operation.
+    /// Runs npm Command.
     /// </summary>
-    /// <param name="args">The args.</param>
-    /// <param name="ct">The ct.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
+    /// <param name="args">Command-line arguments passed to the application.</param>
+    /// <param name="ct">Ct for the run npm command operation.</param>
+    /// <returns>A task that completes when the run npm command operation is complete.</returns>
     ValueTask RunNpmCommand(string args, CancellationToken ct);
 }
