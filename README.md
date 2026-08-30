@@ -1,55 +1,70 @@
+# Soenneker.Node.Util
 [![](https://img.shields.io/nuget/v/soenneker.node.util.svg?style=for-the-badge)](https://www.nuget.org/packages/soenneker.node.util/)
 [![](https://img.shields.io/github/actions/workflow/status/soenneker/soenneker.node.util/publish-package.yml?style=for-the-badge)](https://github.com/soenneker/soenneker.node.util/actions/workflows/publish-package.yml)
 [![](https://img.shields.io/nuget/dt/soenneker.node.util.svg?style=for-the-badge)](https://www.nuget.org/packages/soenneker.node.util/)
 [![](https://img.shields.io/github/actions/workflow/status/soenneker/soenneker.node.util/codeql.yml?label=CodeQL&style=for-the-badge)](https://github.com/soenneker/soenneker.node.util/actions/workflows/codeql.yml)
 
-# Soenneker.Node.Util
+Locates Node.js tooling, optionally installs Node.js or pnpm, and runs repeatable npm dependency installs from .NET.
 
-Provides helpers for locating, verifying, and installing Node.js and for running common npm operations.
-
-## Install
+## Installation
 
 ```bash
 dotnet add package Soenneker.Node.Util
 ```
 
-## Quick start
+## Registration
 
 ```csharp
 using Soenneker.Node.Util.Registrars;
-using Microsoft.Extensions.DependencyInjection;
 
-var services = new ServiceCollection();
-var result = services.AddNodeUtilAsSingleton();
+builder.Services.AddNodeUtilAsSingleton();
+// or: builder.Services.AddNodeUtilAsScoped();
 ```
 
-Adds `INodeUtil` as a singleton service.
+## Locate Node.js without modifying the machine
 
-## What you get
+```csharp
+using Soenneker.Node.Util.Abstract;
 
-- `INodeUtil` — Provides helpers for locating, verifying, and installing Node.js and for running common npm operations.
-- `NodeUtilRegistrar` — A utility library for Node related operations.
+string nodePath = await node.EnsureInstalled(
+    minVersion: "20.11.1",
+    installIfMissing: false,
+    cancellationToken);
+```
 
-## API at a glance
+`TryLocate(minVersion)` returns `null` when no installation meets the minimum. `TryLocateAny()` accepts any version. Discovery checks the hosted-tool cache on Windows and then probes common `node` command names. Probe failures return `null`, while caller cancellation is propagated.
 
-| API | What it does | Result / important behavior |
-| --- | --- | --- |
-| `INodeUtil.GetNodePath(nodeCommand, cancellationToken)` | Gets the full path to the Node.js executable by executing a small Node script that prints `process.execPath`. | The resolved Node.js executable path. |
-| `INodeUtil.TryLocate(minVersion, cancellationToken)` | Attempts to locate Node.js and (optionally) verify it meets a minimum version requirement. | The resolved Node.js executable path if found and compatible; otherwise `null`. |
-| `INodeUtil.TryLocateAny(cancellationToken)` | Attempts to locate any Node.js installation. | The resolved Node.js executable path if found; otherwise `null`. |
-| `INodeUtil.EnsureInstalled(minVersion, installIfMissing, cancellationToken)` | Ensures Node.js is installed and (optionally) meets a minimum version. | The resolved Node.js executable path. |
-| `INodeUtil.TryInstall(version, cancellationToken)` | Attempts to install Node.js. | A task that completes when the try install operation is complete. |
-| `INodeUtil.NpmInstall(directory, cleanInstall, omitDevDependencies, ignoreScripts, noAudit, noFund, skipIfUpToDate, cancellationToken)` | Runs `npm install` or `npm ci` in the specified directory. | The captured stdout/stderr output from the npm command. |
-| `INodeUtil.InstallPnpm(force, cancellationToken)` | Installs pnpm. | A task whose result is the text returned by install Pnpm. |
-| `NodeUtilRegistrar.AddNodeUtilAsSingleton(services)` | Adds `INodeUtil` as a singleton service. | The same service collection, so additional registrations can be chained. |
-| `NodeUtilRegistrar.AddNodeUtilAsScoped(services)` | Adds `INodeUtil` as a scoped service. | The same service collection, so additional registrations can be chained. |
+`GetNodePath(command)` executes the supplied Node executable and returns `process.execPath`. `GetNpmPath` and `GetNpxPath` search `PATH` and common platform locations, but may return the bare command name when no file is resolved. `GetGlobalToolPath` accepts a single tool file name and confines lookup to npm's global binary directory.
 
-## Important behavior
+## Install project dependencies
 
-- `INodeUtil.EnsureInstalled(minVersion, installIfMissing, cancellationToken)`: Thrown when `minVersion` cannot be parsed. Thrown when Node.js cannot be found (or installed when enabled).
-- `INodeUtil.TryInstall(version, cancellationToken)`: Installation strategy is OS-specific (for example: apt-get on Linux, winget/choco on Windows, brew on macOS). This method may require elevated privileges depending on the environment.
-- `INodeUtil.NpmInstall(directory, cleanInstall, omitDevDependencies, ignoreScripts, noAudit, noFund, skipIfUpToDate, cancellationToken)`: Thrown when `directory` is empty or invalid. Thrown when `directory` does not exist.
+```csharp
+string output = await node.NpmInstall(
+    directory: repositoryPath,
+    cleanInstall: true,
+    omitDevDependencies: false,
+    ignoreScripts: true,
+    noAudit: true,
+    noFund: true,
+    skipIfUpToDate: true,
+    cancellationToken);
+```
 
-## Practical notes
+`cleanInstall: true` runs `npm ci` and therefore requires `package-lock.json` or `npm-shrinkwrap.json`. Otherwise the utility runs `npm install`.
 
-- Cancellation stops pending work; it does not undo work that has already completed.
+After a successful install, the utility writes `npm-install.lockhash` in the project directory. A later call skips npm only when `node_modules` exists and the marker matches:
+
+- `package.json`;
+- the shrinkwrap or lock file, when present;
+- the resolved Node.js and npm versions;
+- `cleanInstall`, `omitDevDependencies`, and `ignoreScripts`.
+
+Install calls for the same resolved directory are serialized within the process. A missing, stale, or unreadable marker runs npm again. Add the marker to `.gitignore` if it is only a local build artifact.
+
+`ignoreScripts` defaults to `false`, which allows dependency lifecycle scripts to execute with the current account's permissions. Use `true` for untrusted dependency trees unless the build explicitly requires those scripts. `noAudit: true` suppresses npm's audit request; it is not a security scan.
+
+## Machine-wide installation
+
+`EnsureInstalled` defaults to `installIfMissing: true`. Depending on the OS, installation invokes `sudo apt-get`, winget or Chocolatey, or Homebrew. Linux package installation uses the configured apt repository and does not select the requested Node major. Windows and macOS installers select a major where their package manager supports it. `EnsureInstalled` always probes again and fails if the installed result does not satisfy the requested minimum.
+
+`InstallPnpm` runs a global `npm install -g pnpm`. `RunNpmCommand` executes the provided raw npm arguments. Treat both as privileged operations and pass only application-controlled arguments. Package-manager changes are not rolled back when cancellation or a later step fails.

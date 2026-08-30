@@ -9,13 +9,15 @@ using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
 using Soenneker.Hashing.XxHash;
 using Soenneker.Utils.Runtime;
+using System.Collections.Concurrent;
 
 namespace Soenneker.Node.Util;
 
-/// <inheritdoc cref="INodeUtil"/>
 public sealed partial class NodeUtil
 {
     private const string _npmMarkerFileName = "npm-install.lockhash";
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _npmInstallLocks = new(
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     
     private static string GetMarkerPath(string directory) =>
         Path.Combine(directory, _npmMarkerFileName);
@@ -112,6 +114,10 @@ public sealed partial class NodeUtil
                     cancellationToken: cancellationToken
                 ).NoSync();
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "apt-get install nodejs failed (node may already be installed or install may require privileges).");
@@ -136,6 +142,10 @@ public sealed partial class NodeUtil
                         cancellationToken
                     ).NoSync();
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "winget install {WingetId} failed (node may already be installed or install may require elevation).", wingetId);
@@ -156,6 +166,10 @@ public sealed partial class NodeUtil
                         _installTimeoutWin,
                         cancellationToken
                     ).NoSync();
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
                 }
                 catch (Exception ex)
                 {
@@ -179,6 +193,10 @@ public sealed partial class NodeUtil
                     _installTimeoutMac,
                     cancellationToken
                 ).NoSync();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -217,8 +235,28 @@ public sealed partial class NodeUtil
         if (!await _directoryUtil.Exists(directory, cancellationToken).NoSync())
             throw new DirectoryNotFoundException($"Directory not found: {directory}");
 
-        // Ensure node is present (npm should come with it)
-        await EnsureInstalled(null, installIfMissing: true, cancellationToken).NoSync();
+        SemaphoreSlim installLock = _npmInstallLocks.GetOrAdd(directory, static _ => new SemaphoreSlim(1, 1));
+        await installLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            return await NpmInstallUnderLock(directory, cleanInstall, omitDevDependencies, ignoreScripts, noAudit, noFund, skipIfUpToDate,
+                cancellationToken).NoSync();
+        }
+        finally
+        {
+            installLock.Release();
+        }
+    }
+
+    private async ValueTask<string> NpmInstallUnderLock(string directory, bool cleanInstall, bool omitDevDependencies, bool ignoreScripts, bool noAudit,
+        bool noFund, bool skipIfUpToDate, CancellationToken cancellationToken)
+    {
+
+        string nodePath = await EnsureInstalled(null, installIfMissing: true, cancellationToken).NoSync();
+        string npm = await GetNpmPath(cancellationToken).NoSync();
+        string? nodeVersion = await GetVersionAtPath(nodePath, cancellationToken).NoSync();
+        string npmVersion = (await _processUtil.StartAndGetOutput(npm, "--version", directory, _probeTimeout, cancellationToken).NoSync()).Trim();
 
         string packageJson = Path.Combine(directory, "package.json");
 
@@ -227,14 +265,15 @@ public sealed partial class NodeUtil
 
         if (skipIfUpToDate)
         {
-            if (await IsNpmInstallUpToDate(directory, cleanInstall, cancellationToken).NoSync())
+            string? fingerprint = await ComputeNpmInstallFingerprint(directory, cleanInstall, omitDevDependencies, ignoreScripts, nodeVersion, npmVersion,
+                cancellationToken).NoSync();
+
+            if (fingerprint is not null && await IsNpmInstallUpToDate(directory, fingerprint, cancellationToken).NoSync())
             {
                 _logger.LogInformation("Skipping npm install in {Directory} (node_modules up-to-date).", directory);
                 return string.Empty;
             }
         }
-
-        string npm = await GetNpmPath(cancellationToken).NoSync();
 
         string args = cleanInstall ? "ci" : "install";
 
@@ -263,13 +302,14 @@ public sealed partial class NodeUtil
             cancellationToken
         ).NoSync();
 
-        // Always write lockhash after npm install
-        await WriteNpmInstallMarkerIfPossible(directory, cancellationToken).NoSync();
+        string? installedFingerprint = await ComputeNpmInstallFingerprint(directory, cleanInstall, omitDevDependencies, ignoreScripts, nodeVersion,
+            npmVersion, cancellationToken).NoSync();
+        await WriteNpmInstallMarkerIfPossible(directory, installedFingerprint, cancellationToken).NoSync();
 
         return output;
     }
 
-    private async ValueTask<bool> IsNpmInstallUpToDate(string directory, bool cleanInstall, CancellationToken ct)
+    private async ValueTask<bool> IsNpmInstallUpToDate(string directory, string fingerprint, CancellationToken ct)
     {
         // Must have node_modules
         if (!await _directoryUtil.Exists(GetNodeModulesPath(directory), ct).NoSync())
@@ -281,22 +321,15 @@ public sealed partial class NodeUtil
         if (!await _fileUtil.Exists(markerPath, ct).NoSync())
             return false;
 
-        // Determine input file for hashing (prefer shrinkwrap > lock > package.json)
-        string? hashInput = await GetBestHashInputFile(directory, ct).NoSync();
-        if (hashInput is null)
-            return false;
-
-        // If user requested `npm ci`, require a lock/shrinkwrap (package.json alone isn't deterministic enough)
-        if (cleanInstall && hashInput.EndsWith("package.json", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        string current = await ComputeHash(hashInput, ct).NoSync();
-
         string stored;
 
         try
         {
             stored = (await _fileUtil.Read(markerPath, false, cancellationToken: ct).NoSync()).Trim();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
@@ -306,37 +339,38 @@ public sealed partial class NodeUtil
         if (stored.Length == 0)
             return false;
 
-        return string.Equals(stored, current, StringComparison.Ordinal);
+        return string.Equals(stored, fingerprint, StringComparison.Ordinal);
     }
 
-    private async ValueTask WriteNpmInstallMarker(string directory, CancellationToken ct)
+    private async ValueTask WriteNpmInstallMarker(string directory, string fingerprint, CancellationToken ct)
     {
-        string? hashInput = await GetBestHashInputFile(directory, ct).NoSync();
-        if (hashInput is null)
-            return;
-
-        string hash = await ComputeHash(hashInput, ct).NoSync();
-
         string markerPath = GetMarkerPath(directory);
 
         if (await _fileUtil.Exists(markerPath, ct).NoSync())
         {
             string existing = (await _fileUtil.Read(markerPath, false, cancellationToken: ct).NoSync()).Trim();
-            if (string.Equals(existing, hash, StringComparison.Ordinal))
+            if (string.Equals(existing, fingerprint, StringComparison.Ordinal))
                 return;
         }
 
-        await _fileUtil.Write(markerPath, hash, true, ct).NoSync();
+        await _fileUtil.Write(markerPath, fingerprint, true, ct).NoSync();
     }
 
     /// <summary>
     /// Writes the npm-install lockhash marker when possible. Swallows errors so marker failures don't fail the build.
     /// </summary>
-    private async ValueTask WriteNpmInstallMarkerIfPossible(string directory, CancellationToken ct)
+    private async ValueTask WriteNpmInstallMarkerIfPossible(string directory, string? fingerprint, CancellationToken ct)
     {
+        if (fingerprint is null)
+            return;
+
         try
         {
-            await WriteNpmInstallMarker(directory, ct).NoSync();
+            await WriteNpmInstallMarker(directory, fingerprint, ct).NoSync();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
@@ -344,24 +378,33 @@ public sealed partial class NodeUtil
         }
     }
 
-    private async ValueTask<string?> GetBestHashInputFile(string directory, CancellationToken ct)
+    private async ValueTask<string?> ComputeNpmInstallFingerprint(string directory, bool cleanInstall, bool omitDevDependencies, bool ignoreScripts,
+        string? nodeVersion, string npmVersion, CancellationToken ct)
     {
+        string packageJson = GetPackageJsonPath(directory);
+        if (!await _fileUtil.Exists(packageJson, ct).NoSync())
+            return null;
+
+        string packageHash = await ComputeHash(packageJson, ct).NoSync();
+        string? lockFile = null;
         string shrinkwrap = GetShrinkwrapPath(directory);
 
         if (await _fileUtil.Exists(shrinkwrap, ct).NoSync())
-            return shrinkwrap;
+            lockFile = shrinkwrap;
+        else
+        {
+            string packageLock = GetPackageLockPath(directory);
+            if (await _fileUtil.Exists(packageLock, ct).NoSync())
+                lockFile = packageLock;
+        }
 
-        string lockFile = GetPackageLockPath(directory);
+        if (cleanInstall && lockFile is null)
+            return null;
 
-        if (await _fileUtil.Exists(lockFile, ct).NoSync())
-            return lockFile;
+        string lockHash = lockFile is null ? string.Empty : await ComputeHash(lockFile, ct).NoSync();
+        string material = $"v2|clean:{cleanInstall}|omitDev:{omitDevDependencies}|ignoreScripts:{ignoreScripts}|node:{nodeVersion}|npm:{npmVersion}|package:{packageHash}|lock:{lockHash}";
 
-        string packageJson = GetPackageJsonPath(directory);
-
-        if (await _fileUtil.Exists(packageJson, ct).NoSync())
-            return packageJson;
-
-        return null;
+        return XxHash3Util.Hash(material);
     }
 
     /// <summary>
@@ -386,6 +429,10 @@ public sealed partial class NodeUtil
                     _logger.LogInformation("pnpm already available at {Path}", existing);
                     return existing;
                 }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch
             {

@@ -71,6 +71,7 @@ public partial interface INodeUtil
     /// <param name="toolName">Name of the tool to target.</param>
     /// <param name="cancellationToken">Token used to cancel the operation.</param>
     /// <returns>A task whose result is the text returned by get Global Tool Path.</returns>
+    /// <exception cref="System.InvalidOperationException"><paramref name="toolName"/> is not a single valid file name.</exception>
     ValueTask<string> GetGlobalToolPath(string toolName, CancellationToken cancellationToken = default);
 
     /// <summary>

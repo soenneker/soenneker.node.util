@@ -14,7 +14,6 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Node.Util;
 
-/// <inheritdoc cref="INodeUtil"/>
 public sealed partial class NodeUtil : INodeUtil
 {
     private static readonly TimeSpan _probeTimeout = TimeSpan.FromSeconds(5);
@@ -157,6 +156,10 @@ public sealed partial class NodeUtil : INodeUtil
                 }
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch
         {
             // ignore
@@ -261,6 +264,10 @@ public sealed partial class NodeUtil : INodeUtil
 
             return output.Trim();
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch
         {
             return null;
@@ -345,7 +352,7 @@ public sealed partial class NodeUtil : INodeUtil
             if (string.IsNullOrEmpty(dirName))
                 continue;
 
-            if (!Version.TryParse(dirName, out Version? v) || !MatchMajorMinor(v, target))
+            if (!Version.TryParse(dirName, out Version? v) || !MeetsMinimumVersion(v, target))
                 continue;
 
             string candidate = Path.Combine(verDir, "x64", "node.exe");
@@ -391,6 +398,10 @@ public sealed partial class NodeUtil : INodeUtil
 
             return output.Trim();
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch
         {
             return null;
@@ -426,10 +437,14 @@ public sealed partial class NodeUtil : INodeUtil
             if (!Version.TryParse(versionSpan, out Version? v))
                 return null;
 
-            if (!MatchMajorMinor(v, target))
+            if (!MeetsMinimumVersion(v, target))
                 return null;
 
             return execPathSpan.ToString();
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {
@@ -481,6 +496,9 @@ public sealed partial class NodeUtil : INodeUtil
     /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetGlobalToolPath(string toolName, CancellationToken cancellationToken = default)
     {
+        if (toolName.IsNullOrWhiteSpace() || Path.GetFileName(toolName) != toolName || toolName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new InvalidOperationException("A global npm tool name must be a single valid file name.");
+
         string directory = await GetNpmGlobalBinDirectory(cancellationToken)
             .NoSync();
 
@@ -494,8 +512,7 @@ public sealed partial class NodeUtil : INodeUtil
         return path;
     }
 
-    private static bool MatchMajorMinor(Version found, Version target) =>
-        found.Major == target.Major && (target.Minor < 1 || found.Minor == target.Minor);
+    private static bool MeetsMinimumVersion(Version found, Version target) => found.CompareTo(target) >= 0;
 
     private static bool TryParseVersion(string version, out Version? result)
     {
