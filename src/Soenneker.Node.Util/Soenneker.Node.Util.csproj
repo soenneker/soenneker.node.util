@@ -51,6 +51,6 @@
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="4.0.83" />
         <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.907" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2226" />
-        <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1525" />
+        <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1534" />
     </ItemGroup>
 </Project>
