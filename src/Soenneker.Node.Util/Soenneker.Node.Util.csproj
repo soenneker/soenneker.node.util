@@ -48,6 +48,8 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Soenneker.Asyncs.Locks" Version="4.0.76" />
+        <PackageReference Include="Soenneker.Dictionaries.SingletonKeys" Version="4.0.135" />
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="4.0.85" />
         <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.916" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2246" />

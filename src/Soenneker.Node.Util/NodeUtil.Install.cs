@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.String;
 using Soenneker.Extensions.ValueTask;
+using Soenneker.Asyncs.Locks;
+using Soenneker.Dictionaries.SingletonKeys;
 using Soenneker.Node.Util.Abstract;
 using System;
 using System.IO;
@@ -9,14 +11,13 @@ using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
 using Soenneker.Hashing.XxHash;
 using Soenneker.Utils.Runtime;
-using System.Collections.Concurrent;
 
 namespace Soenneker.Node.Util;
 
 public sealed partial class NodeUtil
 {
     private const string _npmMarkerFileName = "npm-install.lockhash";
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> _npmInstallLocks = new(
+    private static readonly SingletonKeyDictionary<string, AsyncLock> _npmInstallLocks = new(static _ => new AsyncLock(),
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     
     private static string GetMarkerPath(string directory) =>
@@ -235,17 +236,12 @@ public sealed partial class NodeUtil
         if (!await _directoryUtil.Exists(directory, cancellationToken).NoSync())
             throw new DirectoryNotFoundException($"Directory not found: {directory}");
 
-        SemaphoreSlim installLock = _npmInstallLocks.GetOrAdd(directory, static _ => new SemaphoreSlim(1, 1));
-        await installLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        AsyncLock installLock = await _npmInstallLocks.Get(directory, cancellationToken).NoSync();
 
-        try
+        using (await installLock.Lock(cancellationToken).ConfigureAwait(false))
         {
             return await NpmInstallUnderLock(directory, cleanInstall, omitDevDependencies, ignoreScripts, noAudit, noFund, skipIfUpToDate,
                 cancellationToken).NoSync();
-        }
-        finally
-        {
-            installLock.Release();
         }
     }
 
