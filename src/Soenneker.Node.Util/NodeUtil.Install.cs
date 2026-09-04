@@ -17,8 +17,7 @@ namespace Soenneker.Node.Util;
 public sealed partial class NodeUtil
 {
     private const string _npmMarkerFileName = "npm-install.lockhash";
-    private static readonly SingletonKeyDictionary<string, AsyncLock> _npmInstallLocks = new(static _ => new AsyncLock(),
-        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    private static readonly SingletonKeyDictionary<string, AsyncLock> _npmInstallLocks = new(static _ => new AsyncLock());
     
     private static string GetMarkerPath(string directory) =>
         Path.Combine(directory, _npmMarkerFileName);
@@ -34,6 +33,13 @@ public sealed partial class NodeUtil
 
     private static string GetPackageJsonPath(string directory) =>
         Path.Combine(directory, "package.json");
+
+    private static string GetNpmInstallLockKey(string directory)
+    {
+        directory = Path.TrimEndingDirectorySeparator(directory);
+
+        return OperatingSystem.IsWindows() ? directory.ToUpperInvariant() : directory;
+    }
 
     /// <summary>
     /// Executes the ensure installed operation.
@@ -236,7 +242,7 @@ public sealed partial class NodeUtil
         if (!await _directoryUtil.Exists(directory, cancellationToken).NoSync())
             throw new DirectoryNotFoundException($"Directory not found: {directory}");
 
-        AsyncLock installLock = await _npmInstallLocks.Get(directory, cancellationToken).NoSync();
+        AsyncLock installLock = await _npmInstallLocks.Get(GetNpmInstallLockKey(directory), cancellationToken).NoSync();
 
         using (await installLock.Lock(cancellationToken).ConfigureAwait(false))
         {
