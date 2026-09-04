@@ -48,7 +48,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Soenneker.Dictionaries.SingletonKeys" Version="4.0.136" />
+        <PackageReference Include="Soenneker.Dictionaries.SingletonKeys" Version="4.0.137" />
         <PackageReference Include="Soenneker.Dictionaries.Singletons" Version="4.0.90" />
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="4.0.85" />
         <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.916" />
