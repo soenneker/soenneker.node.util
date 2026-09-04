@@ -14,6 +14,7 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Node.Util;
 
+/// <inheritdoc cref="INodeUtil" />
 public sealed partial class NodeUtil : INodeUtil
 {
     private static readonly TimeSpan _probeTimeout = TimeSpan.FromSeconds(5);
