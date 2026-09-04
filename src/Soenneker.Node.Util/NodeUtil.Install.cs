@@ -1,8 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.String;
 using Soenneker.Extensions.ValueTask;
-using Soenneker.Asyncs.Locks;
-using Soenneker.Dictionaries.SingletonKeys;
+using Soenneker.Dictionaries.Singletons;
 using Soenneker.Node.Util.Abstract;
 using System;
 using System.IO;
@@ -17,7 +16,8 @@ namespace Soenneker.Node.Util;
 public sealed partial class NodeUtil
 {
     private const string _npmMarkerFileName = "npm-install.lockhash";
-    private static readonly SingletonKeyDictionary<string, AsyncLock> _npmInstallLocks = new(static _ => new AsyncLock());
+    private static readonly SingletonDictionary<NpmInstallCacheEntry, NpmInstallRequest> _npmInstalls = new(
+        static (directory, request, cancellationToken) => request.Owner.RunNpmInstall(directory, request, cancellationToken));
     
     private static string GetMarkerPath(string directory) =>
         Path.Combine(directory, _npmMarkerFileName);
@@ -34,7 +34,7 @@ public sealed partial class NodeUtil
     private static string GetPackageJsonPath(string directory) =>
         Path.Combine(directory, "package.json");
 
-    private static string GetNpmInstallLockKey(string directory)
+    private static string GetNpmInstallCacheKey(string directory)
     {
         directory = Path.TrimEndingDirectorySeparator(directory);
 
@@ -242,73 +242,81 @@ public sealed partial class NodeUtil
         if (!await _directoryUtil.Exists(directory, cancellationToken).NoSync())
             throw new DirectoryNotFoundException($"Directory not found: {directory}");
 
-        AsyncLock installLock = await _npmInstallLocks.Get(GetNpmInstallLockKey(directory), cancellationToken).NoSync();
-
-        using (await installLock.Lock(cancellationToken).ConfigureAwait(false))
-        {
-            return await NpmInstallUnderLock(directory, cleanInstall, omitDevDependencies, ignoreScripts, noAudit, noFund, skipIfUpToDate,
-                cancellationToken).NoSync();
-        }
-    }
-
-    private async ValueTask<string> NpmInstallUnderLock(string directory, bool cleanInstall, bool omitDevDependencies, bool ignoreScripts, bool noAudit,
-        bool noFund, bool skipIfUpToDate, CancellationToken cancellationToken)
-    {
-
         string nodePath = await EnsureInstalled(null, installIfMissing: true, cancellationToken).NoSync();
         string npm = await GetNpmPath(cancellationToken).NoSync();
         string? nodeVersion = await GetVersionAtPath(nodePath, cancellationToken).NoSync();
         string npmVersion = (await _processUtil.StartAndGetOutput(npm, "--version", directory, _probeTimeout, cancellationToken).NoSync()).Trim();
+        string? fingerprint = await ComputeNpmInstallFingerprint(directory, cleanInstall, omitDevDependencies, ignoreScripts, nodeVersion, npmVersion,
+            cancellationToken).NoSync();
 
+        bool cacheIsCurrent = skipIfUpToDate && fingerprint is not null &&
+                              await IsNpmInstallUpToDate(directory, fingerprint, cancellationToken).NoSync();
+        string requestKey = skipIfUpToDate && fingerprint is not null ? fingerprint : Guid.NewGuid().ToString("N");
+        string directoryKey = GetNpmInstallCacheKey(directory);
+        var request = new NpmInstallRequest(this, requestKey, npm, nodeVersion, npmVersion, fingerprint, cleanInstall, omitDevDependencies, ignoreScripts,
+            noAudit, noFund, skipIfUpToDate);
+
+        if (_npmInstalls.TryGet(directoryKey, out NpmInstallCacheEntry? cached) && cached is not null &&
+            (!cacheIsCurrent || cached.RequestKey != requestKey))
+            await _npmInstalls.Evict(directoryKey, cancellationToken).NoSync();
+
+        while (true)
+        {
+            NpmInstallCacheEntry result = await _npmInstalls.Get(directoryKey, request, cancellationToken).NoSync();
+
+            if (result.RequestKey == requestKey)
+                return result.Output;
+
+            await _npmInstalls.Evict(directoryKey, cancellationToken).NoSync();
+        }
+    }
+
+    private async ValueTask<NpmInstallCacheEntry> RunNpmInstall(string directory, NpmInstallRequest request, CancellationToken cancellationToken)
+    {
         string packageJson = Path.Combine(directory, "package.json");
 
         if (!await _fileUtil.Exists(packageJson, cancellationToken).NoSync())
             _logger.LogWarning("npm install requested but package.json not found in {Directory}.", directory);
 
-        if (skipIfUpToDate)
+        if (request.SkipIfUpToDate && request.Fingerprint is not null &&
+            await IsNpmInstallUpToDate(directory, request.Fingerprint, cancellationToken).NoSync())
         {
-            string? fingerprint = await ComputeNpmInstallFingerprint(directory, cleanInstall, omitDevDependencies, ignoreScripts, nodeVersion, npmVersion,
-                cancellationToken).NoSync();
-
-            if (fingerprint is not null && await IsNpmInstallUpToDate(directory, fingerprint, cancellationToken).NoSync())
-            {
-                _logger.LogInformation("Skipping npm install in {Directory} (node_modules up-to-date).", directory);
-                return string.Empty;
-            }
+            _logger.LogInformation("Skipping npm install in {Directory} (node_modules up-to-date).", directory);
+            return new NpmInstallCacheEntry(request.RequestKey, string.Empty);
         }
 
-        string args = cleanInstall ? "ci" : "install";
+        string args = request.CleanInstall ? "ci" : "install";
 
-        if (omitDevDependencies)
+        if (request.OmitDevDependencies)
             args += " --omit=dev";
 
-        if (ignoreScripts)
+        if (request.IgnoreScripts)
             args += " --ignore-scripts";
 
-        if (noAudit)
+        if (request.NoAudit)
             args += " --no-audit";
 
-        if (noFund)
+        if (request.NoFund)
             args += " --no-fund";
 
         TimeSpan timeout = OperatingSystem.IsWindows() ? _npmInstallTimeoutWin : _npmInstallTimeoutUnix;
 
-        _logger.LogInformation("Running {Cmd} {Args} in {Directory}", npm, args, directory);
+        _logger.LogInformation("Running {Cmd} {Args} in {Directory}", request.Npm, args, directory);
 
         // working directory = target directory
         string output = await _processUtil.StartAndGetOutput(
-            npm,
+            request.Npm,
             args,
             directory,
             timeout,
             cancellationToken
         ).NoSync();
 
-        string? installedFingerprint = await ComputeNpmInstallFingerprint(directory, cleanInstall, omitDevDependencies, ignoreScripts, nodeVersion,
-            npmVersion, cancellationToken).NoSync();
+        string? installedFingerprint = await ComputeNpmInstallFingerprint(directory, request.CleanInstall, request.OmitDevDependencies,
+            request.IgnoreScripts, request.NodeVersion, request.NpmVersion, cancellationToken).NoSync();
         await WriteNpmInstallMarkerIfPossible(directory, installedFingerprint, cancellationToken).NoSync();
 
-        return output;
+        return new NpmInstallCacheEntry(request.RequestKey, output);
     }
 
     private async ValueTask<bool> IsNpmInstallUpToDate(string directory, string fingerprint, CancellationToken ct)
