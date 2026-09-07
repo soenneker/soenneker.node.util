@@ -249,6 +249,10 @@ public sealed partial class NodeUtil : INodeUtil
 
     private async ValueTask LogVersion(string nodePath, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_logger.IsEnabled(LogLevel.Information))
+            return;
+
         string? version = await GetVersionAtPath(nodePath, cancellationToken)
             .NoSync();
 
