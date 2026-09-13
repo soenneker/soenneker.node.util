@@ -50,8 +50,8 @@
     <ItemGroup>
         <PackageReference Include="Soenneker.Dictionaries.Singletons" Version="4.0.102" />
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="4.0.97" />
-        <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.938" />
-        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2272" />
-        <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1560" />
+        <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.939" />
+        <PackageReference Include="Soenneker.Utils.File" Version="4.0.2273" />
+        <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1561" />
     </ItemGroup>
 </Project>
