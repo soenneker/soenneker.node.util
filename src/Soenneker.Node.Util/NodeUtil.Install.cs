@@ -38,7 +38,7 @@ public sealed partial class NodeUtil
     {
         directory = Path.TrimEndingDirectorySeparator(directory);
 
-        return OperatingSystem.IsWindows() ? directory.ToUpperInvariant() : directory;
+        return RuntimeUtil.IsWindows() ? directory.ToUpperInvariant() : directory;
     }
 
     /// <summary>
@@ -111,7 +111,7 @@ public sealed partial class NodeUtil
         int major = version?.Major ?? 0;
         var ver = major.ToString();
 
-        if (OperatingSystem.IsLinux())
+        if (RuntimeUtil.IsLinux())
         {
             try
             {
@@ -130,7 +130,7 @@ public sealed partial class NodeUtil
                 _logger.LogWarning(ex, "apt-get install nodejs failed (node may already be installed or install may require privileges).");
             }
         }
-        else if (OperatingSystem.IsWindows())
+        else if (RuntimeUtil.IsWindows())
         {
             string wingetId = latest ? "OpenJS.NodeJS" : $"OpenJS.NodeJS.{major}";
             string wingetArgs = latest
@@ -188,7 +188,7 @@ public sealed partial class NodeUtil
                 throw new InvalidOperationException("Neither winget nor Chocolatey is available to install Node.js on this runner.");
             }
         }
-        else if (OperatingSystem.IsMacOS())
+        else if (RuntimeUtil.IsMacOs())
         {
             try
             {
@@ -299,7 +299,7 @@ public sealed partial class NodeUtil
         if (request.NoFund)
             args += " --no-fund";
 
-        TimeSpan timeout = OperatingSystem.IsWindows() ? _npmInstallTimeoutWin : _npmInstallTimeoutUnix;
+        TimeSpan timeout = RuntimeUtil.IsWindows() ? _npmInstallTimeoutWin : _npmInstallTimeoutUnix;
 
         _logger.LogInformation("Running {Cmd} {Args} in {Directory}", request.Npm, args, directory);
 

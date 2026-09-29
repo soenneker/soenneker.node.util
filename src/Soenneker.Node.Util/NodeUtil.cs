@@ -294,14 +294,14 @@ public sealed partial class NodeUtil : INodeUtil
         if (!TryParseVersion(minVersion, out Version? required))
             return null;
 
-        if (OperatingSystem.IsWindows())
+        if (RuntimeUtil.IsWindows())
         {
             if (await ProbeHostedToolCache(required!, cancellationToken)
                     .NoSync() is { } cached)
                 return cached;
         }
 
-        string[] commands = OperatingSystem.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
+        string[] commands = RuntimeUtil.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
 
         for (var i = 0; i < commands.Length; i++)
         {
@@ -320,14 +320,14 @@ public sealed partial class NodeUtil : INodeUtil
     /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string?> TryLocateAny(CancellationToken cancellationToken = default)
     {
-        if (OperatingSystem.IsWindows())
+        if (RuntimeUtil.IsWindows())
         {
             if (await ProbeHostedToolCacheAny(cancellationToken)
                     .NoSync() is { } cached)
                 return cached;
         }
 
-        string[] commands = OperatingSystem.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
+        string[] commands = RuntimeUtil.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
 
         for (var i = 0; i < commands.Length; i++)
         {
