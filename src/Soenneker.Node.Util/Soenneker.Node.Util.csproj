@@ -51,7 +51,7 @@
     <ItemGroup>
         <PackageReference Include="Soenneker.Dictionaries.Singletons" Version="4.0.113" />
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="4.0.104" />
-        <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.948" />
+        <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.949" />
         <PackageReference Include="Soenneker.Utils.File" Version="4.0.2291" />
         <PackageReference Include="Soenneker.Utils.Process" Version="4.0.1575" />
         <PackageReference Include="Soenneker.Extensions.ValueTask" Version="4.0.124" />
