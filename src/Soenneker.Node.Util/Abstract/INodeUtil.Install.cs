@@ -40,7 +40,8 @@ public partial interface INodeUtil
     ValueTask TryInstall(Version? version, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Runs <c>npm install</c> or <c>npm ci</c> in the specified directory.
+    /// Runs <c>npm install</c> or <c>npm ci</c> in the specified directory using the selected Node.js executable.
+    /// npm is resolved from that installation or a standard separate npm installation on PATH.
     /// </summary>
     /// <param name="directory">Directory to read from or write to.</param>
     /// <param name="cleanInstall">When <see langword="true"/>, runs <c>npm ci</c>; otherwise runs <c>npm install</c>.</param>
@@ -53,6 +54,7 @@ public partial interface INodeUtil
     /// <returns>The captured stdout/stderr output from the npm command.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="directory"/> is empty or invalid.</exception>
     /// <exception cref="DirectoryNotFoundException">Thrown when <paramref name="directory"/> does not exist.</exception>
+    /// <exception cref="FileNotFoundException">Thrown when npm-cli.js cannot be located in a supported installation layout.</exception>
     ValueTask<string> NpmInstall(
         string directory,
         bool cleanInstall = false,
@@ -72,7 +74,8 @@ public partial interface INodeUtil
     ValueTask<string> InstallPnpm(bool force = false, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Runs npm Command.
+    /// Runs npm through the selected Node.js executable, resolving bundled or separately installed npm.
+    /// The selected Node.js directory is prepended to the child process PATH for lifecycle scripts.
     /// </summary>
     /// <param name="args">Command-line arguments passed to the application.</param>
     /// <param name="ct">Ct for the run npm command operation.</param>

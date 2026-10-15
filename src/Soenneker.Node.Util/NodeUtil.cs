@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Soenneker.Extensions.ValueTask;
+using Soenneker.Extensions.Task;
 using Soenneker.Node.Util.Abstract;
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.File.Abstract;
@@ -14,10 +15,9 @@ using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Node.Util;
 
-/// <inheritdoc cref="INodeUtil" />
 public sealed partial class NodeUtil : INodeUtil
 {
-    private static readonly TimeSpan _probeTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan _probeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan _existsTimeout = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan _installTimeoutWin = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan _installTimeoutMac = TimeSpan.FromMinutes(10);
@@ -53,11 +53,6 @@ public sealed partial class NodeUtil : INodeUtil
         _fileUtil = fileUtil;
     }
 
-    /// <summary>
-    /// Gets npx path.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetNpxPath(CancellationToken cancellationToken = default)
     {
         string npmPath = await GetNpmPath(cancellationToken).NoSync();
@@ -77,11 +72,6 @@ public sealed partial class NodeUtil : INodeUtil
         return "npx";
     }
 
-    /// <summary>
-    /// Gets npm path.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public ValueTask<string> GetNpmPath(CancellationToken cancellationToken = default)
     {
         string[] names = RuntimeUtil.IsWindows() ? _npmNamesWindows : _npmNamesUnix;
@@ -145,7 +135,7 @@ public sealed partial class NodeUtil : INodeUtil
                 if (dirSpan.IsEmpty)
                     continue;
 
-                var dir = dirSpan.ToString();
+                var dir = dirSpan.ToString().Trim('"');
 
                 for (var i = 0; i < names.Length; i++)
                 {
@@ -233,12 +223,6 @@ public sealed partial class NodeUtil : INodeUtil
         return null;
     }
 
-    /// <summary>
-    /// Gets node path.
-    /// </summary>
-    /// <param name="nodeCommand">The node command.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetNodePath(string nodeCommand = "node", CancellationToken cancellationToken = default)
     {
         string result = await _processUtil.StartAndGetOutput(nodeCommand, _scriptExecPath, "", _probeTimeout, cancellationToken)
@@ -273,18 +257,13 @@ public sealed partial class NodeUtil : INodeUtil
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogWarning(ex, "Could not probe Node.js version at {Path}.", nodePath);
             return null;
         }
     }
 
-    /// <summary>
-    /// Attempts to execute locate.
-    /// </summary>
-    /// <param name="minVersion">The min version.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string?> TryLocate(string? minVersion = null, CancellationToken cancellationToken = default)
     {
         if (minVersion.IsNullOrWhiteSpace())
@@ -293,13 +272,6 @@ public sealed partial class NodeUtil : INodeUtil
 
         if (!TryParseVersion(minVersion, out Version? required))
             return null;
-
-        if (RuntimeUtil.IsWindows())
-        {
-            if (await ProbeHostedToolCache(required!, cancellationToken)
-                    .NoSync() is { } cached)
-                return cached;
-        }
 
         string[] commands = RuntimeUtil.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
 
@@ -310,23 +282,11 @@ public sealed partial class NodeUtil : INodeUtil
                 return found;
         }
 
-        return null;
+        return RuntimeUtil.IsWindows() ? await ProbeHostedToolCache(required!, cancellationToken).NoSync() : null;
     }
 
-    /// <summary>
-    /// Attempts to execute locate any.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string?> TryLocateAny(CancellationToken cancellationToken = default)
     {
-        if (RuntimeUtil.IsWindows())
-        {
-            if (await ProbeHostedToolCacheAny(cancellationToken)
-                    .NoSync() is { } cached)
-                return cached;
-        }
-
         string[] commands = RuntimeUtil.IsWindows() ? _nodeCommandsWindows : _nodeCommandsUnix;
 
         for (var i = 0; i < commands.Length; i++)
@@ -336,7 +296,7 @@ public sealed partial class NodeUtil : INodeUtil
                 return found;
         }
 
-        return null;
+        return RuntimeUtil.IsWindows() ? await ProbeHostedToolCacheAny(cancellationToken).NoSync() : null;
     }
 
     private async ValueTask<string?> ProbeHostedToolCache(Version target, CancellationToken cancellationToken)
@@ -362,9 +322,9 @@ public sealed partial class NodeUtil : INodeUtil
 
             string candidate = Path.Combine(verDir, "x64", "node.exe");
 
-            if (await _fileUtil.Exists(candidate, cancellationToken)
-                               .NoSync())
-                return candidate;
+            if (await _fileUtil.Exists(candidate, cancellationToken).NoSync() &&
+                await Probe(candidate, target, cancellationToken).NoSync() is { } found)
+                return found;
         }
 
         return null;
@@ -386,9 +346,9 @@ public sealed partial class NodeUtil : INodeUtil
         {
             string candidate = Path.Combine(verDir, "x64", "node.exe");
 
-            if (await _fileUtil.Exists(candidate, cancellationToken)
-                               .NoSync())
-                return candidate;
+            if (await _fileUtil.Exists(candidate, cancellationToken).NoSync() &&
+                await ProbeAny(candidate, cancellationToken).NoSync() is { } found)
+                return found;
         }
 
         return null;
@@ -407,8 +367,9 @@ public sealed partial class NodeUtil : INodeUtil
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogDebug(ex, "Node.js probe failed for {Command}.", command);
             return null;
         }
     }
@@ -451,37 +412,23 @@ public sealed partial class NodeUtil : INodeUtil
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogDebug(ex, "Node.js probe failed for {Command}.", command);
             return null;
         }
     }
 
-    /// <summary>
-    /// Gets pnpm path.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public ValueTask<string> GetPnpmPath(CancellationToken cancellationToken = default)
     {
         return GetGlobalToolPath("pnpm", cancellationToken);
     }
 
-    /// <summary>
-    /// Gets npm global bin directory.
-    /// </summary>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetNpmGlobalBinDirectory(CancellationToken cancellationToken = default)
     {
-        string npmPath = await GetNpmPath(cancellationToken).NoSync();
-
-        string output = await _processUtil.StartAndGetOutput(
-            npmPath,
-            "prefix -g",
-            "",
-            _probeTimeout,
-            cancellationToken).NoSync();
+        string nodePath = await EnsureInstalled(installIfMissing: false, cancellationToken: cancellationToken).NoSync();
+        NpmCommand command = await ResolveNpmCommand(nodePath, cancellationToken).NoSync();
+        string output = await command.Run("prefix -g", "", _probeTimeout, cancellationToken).NoSync();
 
         string prefix = output.Trim();
 
@@ -493,12 +440,6 @@ public sealed partial class NodeUtil : INodeUtil
             : Path.Combine(prefix, "bin");
     }
 
-    /// <summary>
-    /// Gets global tool path.
-    /// </summary>
-    /// <param name="toolName">The tool name.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> GetGlobalToolPath(string toolName, CancellationToken cancellationToken = default)
     {
         if (toolName.IsNullOrWhiteSpace() || Path.GetFileName(toolName) != toolName || toolName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)

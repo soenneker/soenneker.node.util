@@ -41,18 +41,11 @@ public sealed partial class NodeUtil
         return RuntimeUtil.IsWindows() ? directory.ToUpperInvariant() : directory;
     }
 
-    /// <summary>
-    /// Executes the ensure installed operation.
-    /// </summary>
-    /// <param name="minVersion">The min version.</param>
-    /// <param name="installIfMissing">The install if missing.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> EnsureInstalled(string? minVersion = null, bool installIfMissing = true, CancellationToken cancellationToken = default)
     {
         bool anyVersion = minVersion.IsNullOrWhiteSpace();
 
-        _logger.LogInformation("Ensuring Node.js {Version} is installed.", anyVersion ? "any (latest)" : minVersion);
+        _logger.LogInformation("Ensuring Node.js {Version} is installed.", anyVersion ? "any" : minVersion);
 
         if (anyVersion)
         {
@@ -99,12 +92,6 @@ public sealed partial class NodeUtil
         throw new InvalidOperationException($"Node.js {minVersion} not found.");
     }
 
-    /// <summary>
-    /// Attempts to execute install.
-    /// </summary>
-    /// <param name="version">The version.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask TryInstall(Version? version, CancellationToken cancellationToken = default)
     {
         bool latest = version is null;
@@ -116,7 +103,7 @@ public sealed partial class NodeUtil
             try
             {
                 await _processUtil.BashRun(
-                    "sudo apt-get -qq update && sudo apt-get -y install nodejs",
+                    "sudo apt-get -qq update && sudo apt-get -y install nodejs npm",
                     "",
                     cancellationToken: cancellationToken
                 ).NoSync();
@@ -212,18 +199,6 @@ public sealed partial class NodeUtil
         }
     }
 
-    /// <summary>
-    /// Executes the npm install operation.
-    /// </summary>
-    /// <param name="directory">The directory.</param>
-    /// <param name="cleanInstall">The clean install.</param>
-    /// <param name="omitDevDependencies">The omit dev dependencies.</param>
-    /// <param name="ignoreScripts">The ignore scripts.</param>
-    /// <param name="noAudit">The no audit.</param>
-    /// <param name="noFund">The no fund.</param>
-    /// <param name="skipIfUpToDate">The skip if up to date.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> NpmInstall(
         string directory,
         bool cleanInstall = false,          // true => npm ci, false => npm install
@@ -243,9 +218,9 @@ public sealed partial class NodeUtil
             throw new DirectoryNotFoundException($"Directory not found: {directory}");
 
         string nodePath = await EnsureInstalled(null, installIfMissing: true, cancellationToken).NoSync();
-        string npm = await GetNpmPath(cancellationToken).NoSync();
-        string? nodeVersion = await GetVersionAtPath(nodePath, cancellationToken).NoSync();
-        string npmVersion = (await _processUtil.StartAndGetOutput(npm, "--version", directory, _probeTimeout, cancellationToken).NoSync()).Trim();
+        NpmCommand npm = await ResolveNpmCommand(nodePath, cancellationToken).NoSync();
+        string nodeVersion = (await _processUtil.StartAndGetOutput(nodePath, _scriptVersion, "", _probeTimeout, cancellationToken).NoSync()).Trim();
+        string npmVersion = (await npm.Run("--version", directory, _probeTimeout, cancellationToken).NoSync()).Trim();
         string? fingerprint = await ComputeNpmInstallFingerprint(directory, cleanInstall, omitDevDependencies, ignoreScripts, nodeVersion, npmVersion,
             cancellationToken).NoSync();
 
@@ -304,8 +279,7 @@ public sealed partial class NodeUtil
         _logger.LogInformation("Running {Cmd} {Args} in {Directory}", request.Npm, args, directory);
 
         // working directory = target directory
-        string output = await _processUtil.StartAndGetOutput(
-            request.Npm,
+        string output = await request.Npm.Run(
             args,
             directory,
             timeout,
@@ -417,12 +391,6 @@ public sealed partial class NodeUtil
         return XxHash3Util.Hash(material);
     }
 
-    /// <summary>
-    /// Executes the install pnpm operation.
-    /// </summary>
-    /// <param name="force">The force.</param>
-    /// <param name="cancellationToken">The cancellation token.</param>
-    /// <returns>A task containing the result of the operation.</returns>
     public async ValueTask<string> InstallPnpm(bool force = false, CancellationToken cancellationToken = default)
     {
         // Ensure Node/npm exists first
@@ -460,18 +428,12 @@ public sealed partial class NodeUtil
         return pnpmPath;
     }
 
-    /// <summary>
-    /// Executes the run npm command operation.
-    /// </summary>
-    /// <param name="args">The args.</param>
-    /// <param name="ct">The ct.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
     public async ValueTask RunNpmCommand(string args, CancellationToken ct)
     {
-        string npm = await GetNpmPath(ct).NoSync();
+        string nodePath = await EnsureInstalled(cancellationToken: ct).NoSync();
+        NpmCommand npm = await ResolveNpmCommand(nodePath, ct).NoSync();
 
-        await _processUtil.StartAndGetOutput(
-            npm,
+        await npm.Run(
             args,
             "",
             _npmInstallTimeoutWin,

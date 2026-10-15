@@ -50,7 +50,7 @@ public partial interface INodeUtil
     ValueTask<string?> TryLocate(string? minVersion = null, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Attempts to locate any Node.js installation.
+    /// Attempts to locate a runnable Node.js installation on PATH, then in the Windows hosted tool cache.
     /// </summary>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>

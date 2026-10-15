@@ -3,7 +3,7 @@ namespace Soenneker.Node.Util;
 internal sealed record NpmInstallRequest(
     NodeUtil Owner,
     string RequestKey,
-    string Npm,
+    NpmCommand Npm,
     string? NodeVersion,
     string NpmVersion,
     string? Fingerprint,
