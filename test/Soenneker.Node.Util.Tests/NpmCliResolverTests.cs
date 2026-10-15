@@ -1,15 +1,19 @@
 using System;
 using System.IO;
+using System.Threading.Tasks;
+using Soenneker.Tests.HostedUnit;
+using Soenneker.Utils.File.Abstract;
 
 namespace Soenneker.Node.Util.Tests;
 
-public sealed class NpmCliResolverTests
+[ClassDataSource<Host>(Shared = SharedType.PerTestSession)]
+public sealed class NpmCliResolverTests(Host host) : HostedUnitTest(host)
 {
     [Test]
     [Arguments("node_modules/npm/bin/npm-cli.js")]
     [Arguments("../lib/node_modules/npm/bin/npm-cli.js")]
     [Arguments("../share/nodejs/npm/bin/npm-cli.js")]
-    public void Finds_bundled_and_separate_layouts(string relativeCli)
+    public async Task Finds_bundled_and_separate_layouts(string relativeCli)
     {
         string root = Path.Combine(Path.GetTempPath(), "npm resolver " + Guid.NewGuid().ToString("N"));
         string bin = Path.Combine(root, "bin");
@@ -21,24 +25,24 @@ public sealed class NpmCliResolverTests
             File.WriteAllText(cli, "");
             string npm = Path.Combine(bin, "npm.cmd");
             File.WriteAllText(npm, "");
-            if (NpmCliResolver.FindBundled(Path.Combine(bin, "node")) != cli || NpmCliResolver.FindSeparate(npm) != cli)
+            if (await new NpmCliResolver(Resolve<IFileUtil>(true)).FindBundled(Path.Combine(bin, "node")) != cli || await new NpmCliResolver(Resolve<IFileUtil>(true)).FindSeparate(npm) != cli)
                 throw new InvalidOperationException("Failed to resolve npm layout: " + relativeCli);
             File.Delete(cli);
-            if (NpmCliResolver.FindSeparate(npm) is not null)
+            if (await new NpmCliResolver(Resolve<IFileUtil>(true)).FindSeparate(npm) is not null)
                 throw new InvalidOperationException("A wrapper without an npm CLI should not resolve.");
         }
         finally { Directory.Delete(root, recursive: true); }
     }
 
     [Test]
-    public void Missing_npm_does_not_resolve_from_working_directory()
+    public async Task Missing_npm_does_not_resolve_from_working_directory()
     {
-        if (NpmCliResolver.FindSeparate("npm") is not null)
+        if (await new NpmCliResolver(Resolve<IFileUtil>(true)).FindSeparate("npm") is not null)
             throw new InvalidOperationException("An unresolved command must not be treated as a filesystem path.");
     }
 
     [Test]
-    public void Resolves_unix_npm_symlinks()
+    public async Task Resolves_unix_npm_symlinks()
     {
         // Windows developer-mode/admin symlink privileges are not required by this suite.
         if (OperatingSystem.IsWindows())
@@ -52,7 +56,7 @@ public sealed class NpmCliResolverTests
             File.WriteAllText(cli, "");
             string link = Path.Combine(root, "npm");
             File.CreateSymbolicLink(link, Path.Combine("separate", "npm-cli.js"));
-            if (NpmCliResolver.FindSeparate(link) != cli)
+            if (await new NpmCliResolver(Resolve<IFileUtil>(true)).FindSeparate(link) != cli)
                 throw new InvalidOperationException("The npm symlink target was not resolved.");
         }
         finally { Directory.Delete(root, recursive: true); }

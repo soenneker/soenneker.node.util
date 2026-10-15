@@ -1,39 +1,46 @@
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using Soenneker.Extensions.ValueTask;
+using Soenneker.Utils.File.Abstract;
 
 namespace Soenneker.Node.Util;
 
 /// <summary>Locates npm CLI scripts in bundled and separate npm installations.</summary>
-public static class NpmCliResolver
+public sealed class NpmCliResolver(IFileUtil fileUtil)
 {
     /// <summary>Finds npm-cli.js near the Node executable or its symlink target, returning null when absent.</summary>
-    public static string? FindBundled(string nodePath)
+    public async ValueTask<string?> FindBundled(string nodePath, CancellationToken cancellationToken = default)
     {
-        string? result = FindNear(nodePath);
+        cancellationToken.ThrowIfCancellationRequested();
+        string? result = await FindNear(nodePath, cancellationToken).NoSync();
         if (result is not null)
             return result;
 
         string? target = ResolveLink(nodePath);
-        return target is null ? null : FindNear(target);
+        return target is null ? null : await FindNear(target, cancellationToken).NoSync();
     }
 
     /// <summary>Finds npm-cli.js from an absolute npm executable path, returning null when absent.</summary>
-    public static string? FindSeparate(string npmPath)
+    public async ValueTask<string?> FindSeparate(string npmPath, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         // A bare command means GetNpmPath did not find an installation.
-        if (!Path.IsPathFullyQualified(npmPath) || !File.Exists(npmPath))
+        if (!Path.IsPathFullyQualified(npmPath) || !await fileUtil.Exists(npmPath, cancellationToken).NoSync())
             return null;
 
         string? target = ResolveLink(npmPath);
-        if (target is not null && Path.GetFileName(target) == "npm-cli.js" && File.Exists(target))
+        if (target is not null && Path.GetFileName(target) == "npm-cli.js" && await fileUtil.Exists(target, cancellationToken).NoSync())
             return target;
         if (Path.GetFileName(npmPath) == "npm-cli.js")
             return npmPath;
 
-        return FindNear(npmPath) ?? (target is null ? null : FindNear(target));
+        return await FindNear(npmPath, cancellationToken).NoSync() ??
+               (target is null ? null : await FindNear(target, cancellationToken).NoSync());
     }
 
-    private static string? FindNear(string executable)
+    private async ValueTask<string?> FindNear(string executable, CancellationToken cancellationToken)
     {
         string? directory = Path.GetDirectoryName(executable);
         if (string.IsNullOrEmpty(directory))
@@ -50,7 +57,7 @@ public static class NpmCliResolver
 
         foreach (string candidate in candidates)
         {
-            if (File.Exists(candidate))
+            if (await fileUtil.Exists(candidate, cancellationToken).NoSync())
                 return Path.GetFullPath(candidate);
         }
 
