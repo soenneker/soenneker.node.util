@@ -14,7 +14,7 @@ public partial interface INodeUtil
     /// Ensures Node.js is installed and (optionally) meets a minimum version.
     /// </summary>
     /// <param name="minVersion">
-    /// Optional minimum version string. Examples: <c>20</c>, <c>20.11</c>, <c>v20.11.1</c>.
+    /// Minimum version string, defaulting to <c>24</c>. Examples: <c>24</c>, <c>24.1</c>, <c>v24.1.0</c>.
     /// If <see langword="null"/> or whitespace, any installed version is accepted.
     /// </param>
     /// <param name="installIfMissing">
@@ -25,7 +25,7 @@ public partial interface INodeUtil
     /// <returns>The resolved Node.js executable path.</returns>
     /// <exception cref="ArgumentException">Thrown when <paramref name="minVersion"/> cannot be parsed.</exception>
     /// <exception cref="InvalidOperationException">Thrown when Node.js cannot be found (or installed when enabled).</exception>
-    ValueTask<string> EnsureInstalled(string? minVersion = null, bool installIfMissing = true, CancellationToken cancellationToken = default);
+    ValueTask<string> EnsureInstalled(string? minVersion = "24", bool installIfMissing = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Attempts to install Node.js.

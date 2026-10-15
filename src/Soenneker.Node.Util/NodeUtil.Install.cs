@@ -41,7 +41,7 @@ public sealed partial class NodeUtil
         return RuntimeUtil.IsWindows() ? directory.ToUpperInvariant() : directory;
     }
 
-    public async ValueTask<string> EnsureInstalled(string? minVersion = null, bool installIfMissing = true, CancellationToken cancellationToken = default)
+    public async ValueTask<string> EnsureInstalled(string? minVersion = "24", bool installIfMissing = true, CancellationToken cancellationToken = default)
     {
         bool anyVersion = minVersion.IsNullOrWhiteSpace();
 
@@ -217,7 +217,7 @@ public sealed partial class NodeUtil
         if (!await _directoryUtil.Exists(directory, cancellationToken).NoSync())
             throw new DirectoryNotFoundException($"Directory not found: {directory}");
 
-        string nodePath = await EnsureInstalled(null, installIfMissing: true, cancellationToken).NoSync();
+        string nodePath = await EnsureInstalled(installIfMissing: true, cancellationToken: cancellationToken).NoSync();
         NpmCommand npm = await ResolveNpmCommand(nodePath, cancellationToken).NoSync();
         string nodeVersion = (await _processUtil.StartAndGetOutput(nodePath, _scriptVersion, "", _probeTimeout, cancellationToken).NoSync()).Trim();
         string npmVersion = (await npm.Run("--version", directory, _probeTimeout, cancellationToken).NoSync()).Trim();
@@ -394,7 +394,7 @@ public sealed partial class NodeUtil
     public async ValueTask<string> InstallPnpm(bool force = false, CancellationToken cancellationToken = default)
     {
         // Ensure Node/npm exists first
-        await EnsureInstalled(null, installIfMissing: true, cancellationToken).NoSync();
+        await EnsureInstalled(installIfMissing: true, cancellationToken: cancellationToken).NoSync();
 
         if (!force)
         {
