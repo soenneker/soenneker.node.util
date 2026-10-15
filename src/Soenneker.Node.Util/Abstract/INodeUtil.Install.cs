@@ -34,7 +34,7 @@ public partial interface INodeUtil
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task that completes when the try install operation is complete.</returns>
     /// <remarks>
-    /// Installation strategy is OS-specific (for example: apt-get on Linux, winget/choco on Windows, brew on macOS).
+    /// Installation strategy is OS-specific (NodeSource and apt-get on Debian/Ubuntu, winget/choco on Windows, brew on macOS).
     /// This method may require elevated privileges depending on the environment.
     /// </remarks>
     ValueTask TryInstall(Version? version, CancellationToken cancellationToken = default);

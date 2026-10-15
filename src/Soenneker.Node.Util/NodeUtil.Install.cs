@@ -102,8 +102,18 @@ public sealed partial class NodeUtil
         {
             try
             {
+                string channel = latest ? "current" : ver;
                 await _processUtil.BashRun(
-                    "sudo apt-get -qq update && sudo apt-get -y install nodejs npm",
+                    $$"""
+                    set -euo pipefail
+                    sudo apt-get -qq update
+                    sudo apt-get -y install ca-certificates curl
+                    setup_script=$(mktemp)
+                    trap 'rm -f "$setup_script"' EXIT
+                    curl -fsSL --retry 3 https://deb.nodesource.com/setup_{{channel}}.x -o "$setup_script"
+                    sudo -E bash "$setup_script"
+                    sudo apt-get -y install nodejs
+                    """,
                     "",
                     cancellationToken: cancellationToken
                 ).NoSync();
