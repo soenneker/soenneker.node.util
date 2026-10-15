@@ -38,7 +38,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
       - name: Restore tests
         run: dotnet restore test/Soenneker.Node.Util.Tests/Soenneker.Node.Util.Tests.csproj --verbosity minimal
