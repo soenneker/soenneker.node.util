@@ -3,6 +3,8 @@ using System.IO;
 using System.Threading.Tasks;
 using Soenneker.Node.Util.Abstract;
 using Soenneker.Tests.HostedUnit;
+using Soenneker.Utils.Directory.Abstract;
+using Soenneker.Utils.File.Abstract;
 
 namespace Soenneker.Node.Util.Tests;
 
@@ -10,9 +12,9 @@ namespace Soenneker.Node.Util.Tests;
 public sealed class LinuxNodeInstallationTests(Host host) : HostedUnitTest(host)
 {
     [Test]
-    public async Task Installs_and_reuses_Node_without_root_or_package_managers()
+    public async Task Installs_and_reuses_Node_with_the_native_package_manager()
     {
-        // This installation test runs only in the isolated, unprivileged Linux container matrix.
+        // This installation test runs only in the isolated Linux container matrix.
         if (Environment.GetEnvironmentVariable("NODE_UTIL_INSTALL_SMOKE") != "1")
             return;
         if (!OperatingSystem.IsLinux())
@@ -21,23 +23,23 @@ public sealed class LinuxNodeInstallationTests(Host host) : HostedUnitTest(host)
         var util = Resolve<INodeUtil>(true);
         await Assert.That(await util.TryLocateAny()).IsNull();
         string node = await util.EnsureInstalled();
-        await Assert.That(node.StartsWith(LinuxNodeDistribution.CacheDirectory, StringComparison.Ordinal)).IsTrue();
         await Assert.That(await util.TryLocate("24")).IsEqualTo(node);
         await Assert.That(await util.EnsureInstalled(installIfMissing: false)).IsEqualTo(node);
-        await Assert.That(File.Exists(await util.GetNpmPath())).IsTrue();
-        await Assert.That(File.Exists(await util.GetNpxPath())).IsTrue();
+        var fileUtil = Resolve<IFileUtil>(true);
+        var directoryUtil = Resolve<IDirectoryUtil>(true);
+        await Assert.That(await fileUtil.Exists(await util.GetNpmPath())).IsTrue();
+        await Assert.That(await fileUtil.Exists(await util.GetNpxPath())).IsTrue();
 
-        string project = Path.Combine(Path.GetTempPath(), "node installation " + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(project);
+        string project = await directoryUtil.CreateTempDirectory();
         try
         {
-            await File.WriteAllTextAsync(Path.Combine(project, "package.json"), """{"name":"installation-smoke","version":"1.0.0","private":true}""");
+            await fileUtil.Write(Path.Combine(project, "package.json"), """{"name":"installation-smoke","version":"1.0.0","private":true}""");
             await util.NpmInstall(project, ignoreScripts: true);
-            await Assert.That(File.Exists(Path.Combine(project, "npm-install.lockhash"))).IsTrue();
+            await Assert.That(await fileUtil.Exists(Path.Combine(project, "npm-install.lockhash"))).IsTrue();
         }
         finally
         {
-            Directory.Delete(project, recursive: true);
+            await directoryUtil.Delete(project);
         }
     }
 }

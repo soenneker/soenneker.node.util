@@ -34,9 +34,9 @@ public partial interface INodeUtil
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task that completes when the try install operation is complete.</returns>
     /// <remarks>
-    /// Linux installs checksum-verified archives into the user's XDG cache without root or a package manager.
-    /// Official Node.js builds are preferred, with Node.js community builds used for targets absent from the official index.
-    /// The host must provide a compatible libc and libstdc++ runtime. Unsupported targets fail explicitly.
+    /// Linux supports apt-get, dnf/yum, zypper, pacman, and apk, and requires root or passwordless sudo.
+    /// Debian and RPM installations configure the requested NodeSource release; other managers use their native repositories.
+    /// The resulting executable is checked against the requested minimum. Unsupported managers or unavailable versions fail explicitly.
     /// Windows uses winget/choco; macOS uses brew.
     /// This method may require elevated privileges depending on the environment.
     /// </remarks>

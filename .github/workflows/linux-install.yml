@@ -26,7 +26,7 @@ jobs:
           - image: rockylinux:9
             rid: linux-x64
             dependencies: dnf install -y ca-certificates libstdc++ openssl-libs
-          - image: opensuse/leap:15.6
+          - image: opensuse/tumbleweed:latest
             rid: linux-x64
             dependencies: zypper --non-interactive install ca-certificates libstdc++6 libopenssl3
           - image: archlinux:latest
@@ -47,9 +47,9 @@ jobs:
           BASE_IMAGE: ${{ matrix.image }}
           RUNTIME_DEPENDENCIES: ${{ matrix.dependencies }}
         run: |
-          printf 'FROM %s\nRUN %s\nUSER 10001:10001\nENV HOME=/tmp/nodeutil-home XDG_CACHE_HOME=/tmp/nodeutil-cache\n' "$BASE_IMAGE" "$RUNTIME_DEPENDENCIES" > Dockerfile.smoke
+          printf 'FROM %s\nRUN %s\n' "$BASE_IMAGE" "$RUNTIME_DEPENDENCIES" > Dockerfile.smoke
           docker build -t nodeutil-smoke - < Dockerfile.smoke
-      - name: Install Node and run npm as an unprivileged user
+      - name: Install Node through the native package manager and run npm
         run: >-
           docker run --rm -w /smoke -e NODE_UTIL_INSTALL_SMOKE=1
           -e PipelineEnvironment=true -v "$PWD/smoke:/smoke:ro"
