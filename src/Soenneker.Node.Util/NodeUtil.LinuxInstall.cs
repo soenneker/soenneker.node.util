@@ -24,7 +24,7 @@ public sealed partial class NodeUtil
             string? manager = null;
             foreach (string candidate in _linuxPackageManagers)
             {
-                if (await _processUtil.CommandExistsAndRuns(candidate, "--version", _existsTimeout, cancellationToken).NoSync())
+                if (await CanRunLinuxCommand(candidate, "--version", cancellationToken).NoSync())
                 {
                     manager = candidate;
                     break;
@@ -37,7 +37,7 @@ public sealed partial class NodeUtil
             string elevate = "";
             if (uid != "0")
             {
-                if (!await _processUtil.CommandExistsAndRuns("sudo", "-n true", _existsTimeout, cancellationToken).NoSync())
+                if (!await CanRunLinuxCommand("sudo", "-n true", cancellationToken).NoSync())
                     throw new UnauthorizedAccessException($"Installing Node.js with {manager} requires root or passwordless sudo.");
                 elevate = "sudo -n ";
             }
@@ -62,6 +62,25 @@ public sealed partial class NodeUtil
         finally
         {
             _linuxInstallGate.Release();
+        }
+    }
+
+    private async ValueTask<bool> CanRunLinuxCommand(string command, string arguments, CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Probe directly: minimal distributions such as Alpine do not necessarily include bash or which.
+            await _processUtil.StartAndGetOutput(command, arguments, "", _existsTimeout, cancellationToken).NoSync();
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Linux command probe failed for {Command}.", command);
+            return false;
         }
     }
 }

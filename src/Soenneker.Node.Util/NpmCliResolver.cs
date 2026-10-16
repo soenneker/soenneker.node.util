@@ -46,12 +46,20 @@ public sealed class NpmCliResolver(IFileUtil fileUtil)
         if (string.IsNullOrEmpty(directory))
             return null;
 
-        // Windows archives/global npm installs, Unix archives/nvm/Homebrew,
-        // and Debian/Ubuntu's separately packaged npm respectively.
+        string name = Path.GetFileNameWithoutExtension(executable);
+        int suffixStart = name.Length;
+        while (suffixStart > 0 && char.IsAsciiDigit(name[suffixStart - 1]))
+            suffixStart--;
+        string versionSuffix = name[suffixStart..];
+
+        // Include versioned distro packages and both Unix library-directory conventions.
         string[] candidates =
         [
             Path.Combine(directory, "node_modules", "npm", "bin", "npm-cli.js"),
             Path.Combine(directory, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
+            Path.Combine(directory, "..", "lib64", "node_modules", "npm", "bin", "npm-cli.js"),
+            Path.Combine(directory, "..", "lib", "node_modules", "npm" + versionSuffix, "bin", "npm-cli.js"),
+            Path.Combine(directory, "..", "lib64", "node_modules", "npm" + versionSuffix, "bin", "npm-cli.js"),
             Path.Combine(directory, "..", "share", "nodejs", "npm", "bin", "npm-cli.js")
         ];
 

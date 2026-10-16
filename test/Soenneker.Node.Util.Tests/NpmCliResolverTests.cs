@@ -3,12 +3,36 @@ using System.IO;
 using System.Threading.Tasks;
 using Soenneker.Tests.HostedUnit;
 using Soenneker.Utils.File.Abstract;
+using Soenneker.Utils.Directory.Abstract;
 
 namespace Soenneker.Node.Util.Tests;
 
 [ClassDataSource<Host>(Shared = SharedType.PerTestSession)]
 public sealed class NpmCliResolverTests(Host host) : HostedUnitTest(host)
 {
+    [Test]
+    [Arguments("lib")]
+    [Arguments("lib64")]
+    public async Task Finds_versioned_system_npm_layouts(string libraryDirectory)
+    {
+        var directories = Resolve<IDirectoryUtil>(true);
+        var files = Resolve<IFileUtil>(true);
+        string root = await directories.CreateTempDirectory();
+        try
+        {
+            string bin = Path.Combine(root, "bin");
+            string cli = Path.Combine(root, libraryDirectory, "node_modules", "npm24", "bin", "npm-cli.js");
+            await directories.Create(bin);
+            await directories.Create(Path.GetDirectoryName(cli)!);
+            await files.Write(cli, "");
+            await Assert.That(await new NpmCliResolver(files).FindBundled(Path.Combine(bin, "node24"))).IsEqualTo(cli);
+        }
+        finally
+        {
+            await directories.Delete(root);
+        }
+    }
+
     [Test]
     [Arguments("node_modules/npm/bin/npm-cli.js")]
     [Arguments("../lib/node_modules/npm/bin/npm-cli.js")]
