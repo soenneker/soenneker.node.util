@@ -34,7 +34,10 @@ public partial interface INodeUtil
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task that completes when the try install operation is complete.</returns>
     /// <remarks>
-    /// Installation strategy is OS-specific (NodeSource and apt-get on Debian/Ubuntu, winget/choco on Windows, brew on macOS).
+    /// Linux installs checksum-verified archives into the user's XDG cache without root or a package manager.
+    /// Official Node.js builds are preferred, with Node.js community builds used for targets absent from the official index.
+    /// The host must provide a compatible libc and libstdc++ runtime. Unsupported targets fail explicitly.
+    /// Windows uses winget/choco; macOS uses brew.
     /// This method may require elevated privileges depending on the environment.
     /// </remarks>
     ValueTask TryInstall(Version? version, CancellationToken cancellationToken = default);

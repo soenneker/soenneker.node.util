@@ -18,6 +18,9 @@ env:
   NUGET_XMLDOC_MODE: skip
 
 jobs:
+  linux-install:
+    uses: ./.github/workflows/linux-install.yml
+
   build-and-test:
     strategy:
       fail-fast: false

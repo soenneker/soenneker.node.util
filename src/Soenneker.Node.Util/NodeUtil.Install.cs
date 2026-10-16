@@ -100,32 +100,7 @@ public sealed partial class NodeUtil
 
         if (RuntimeUtil.IsLinux())
         {
-            try
-            {
-                string channel = latest ? "current" : ver;
-                await _processUtil.BashRun(
-                    $$"""
-                    set -euo pipefail
-                    sudo apt-get -qq update
-                    sudo apt-get -y install ca-certificates curl
-                    setup_script=$(mktemp)
-                    trap 'rm -f "$setup_script"' EXIT
-                    curl -fsSL --retry 3 https://deb.nodesource.com/setup_{{channel}}.x -o "$setup_script"
-                    sudo -E bash "$setup_script"
-                    sudo apt-get -y install nodejs
-                    """,
-                    "",
-                    cancellationToken: cancellationToken
-                ).NoSync();
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "apt-get install nodejs failed (node may already be installed or install may require privileges).");
-            }
+            await InstallLinux(version, cancellationToken).NoSync();
         }
         else if (RuntimeUtil.IsWindows())
         {

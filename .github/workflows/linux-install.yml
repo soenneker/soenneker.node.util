@@ -1,0 +1,58 @@
+name: linux-install
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:bookworm-slim
+            rid: linux-x64
+            dependencies: apt-get update && apt-get install -y ca-certificates libstdc++6 libssl3
+          - image: ubuntu:24.04
+            rid: linux-x64
+            dependencies: apt-get update && apt-get install -y ca-certificates libstdc++6 libssl3t64
+          - image: fedora:latest
+            rid: linux-x64
+            dependencies: dnf install -y ca-certificates libstdc++ openssl-libs
+          - image: rockylinux:9
+            rid: linux-x64
+            dependencies: dnf install -y ca-certificates libstdc++ openssl-libs
+          - image: opensuse/leap:15.6
+            rid: linux-x64
+            dependencies: zypper --non-interactive install ca-certificates libstdc++6 libopenssl3
+          - image: archlinux:latest
+            rid: linux-x64
+            dependencies: pacman -Syu --noconfirm ca-certificates gcc-libs openssl
+          - image: alpine:latest
+            rid: linux-musl-x64
+            dependencies: apk add --no-cache ca-certificates libstdc++ libssl3
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Publish isolated test executable
+        run: dotnet publish test/Soenneker.Node.Util.Tests -c Release -r ${{ matrix.rid }} --self-contained true -p:InvariantGlobalization=true -o smoke
+      - name: Prepare runtime-only container
+        env:
+          BASE_IMAGE: ${{ matrix.image }}
+          RUNTIME_DEPENDENCIES: ${{ matrix.dependencies }}
+        run: |
+          printf 'FROM %s\nRUN %s\nUSER 10001:10001\nENV HOME=/tmp/nodeutil-home XDG_CACHE_HOME=/tmp/nodeutil-cache\n' "$BASE_IMAGE" "$RUNTIME_DEPENDENCIES" > Dockerfile.smoke
+          docker build -t nodeutil-smoke - < Dockerfile.smoke
+      - name: Install Node and run npm as an unprivileged user
+        run: >-
+          docker run --rm -w /smoke -e NODE_UTIL_INSTALL_SMOKE=1
+          -e PipelineEnvironment=true -v "$PWD/smoke:/smoke:ro"
+          nodeutil-smoke /smoke/Soenneker.Node.Util.Tests
+          --treenode-filter '/*/*/LinuxNodeInstallationTests/*'
+          --results-directory /tmp/results

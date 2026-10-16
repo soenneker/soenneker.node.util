@@ -21,7 +21,11 @@ env:
   NUGET_XMLDOC_MODE: skip
 
 jobs:
+  linux-install:
+    uses: ./.github/workflows/linux-install.yml
+
   publish-package:
+    needs: linux-install
     runs-on: ubuntu-latest
 
     steps:

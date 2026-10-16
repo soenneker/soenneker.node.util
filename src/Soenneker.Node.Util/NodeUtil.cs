@@ -72,12 +72,18 @@ public sealed partial class NodeUtil : INodeUtil
         return "npx";
     }
 
-    public ValueTask<string> GetNpmPath(CancellationToken cancellationToken = default)
+    public async ValueTask<string> GetNpmPath(CancellationToken cancellationToken = default)
     {
+        if (RuntimeUtil.IsLinux() && await TryLocate("24", cancellationToken).NoSync() is { } node)
+        {
+            string bundled = Path.Combine(Path.GetDirectoryName(node)!, "npm");
+            if (await _fileUtil.Exists(bundled, cancellationToken).NoSync())
+                return bundled;
+        }
         string[] names = RuntimeUtil.IsWindows() ? _npmNamesWindows : _npmNamesUnix;
 
-        return ResolveExecutable(names, defaultCommand: "npm", windowsProbe: ProbeWindowsNpm, macProbe: ProbeMacNpm, linuxProbe: ProbeLinuxNpm,
-            cancellationToken);
+        return await ResolveExecutable(names, defaultCommand: "npm", windowsProbe: ProbeWindowsNpm, macProbe: ProbeMacNpm, linuxProbe: ProbeLinuxNpm,
+            cancellationToken).NoSync();
     }
 
     private async ValueTask<string> ResolveExecutable(string[] names, string defaultCommand, Func<CancellationToken, ValueTask<string?>> windowsProbe,
@@ -282,6 +288,8 @@ public sealed partial class NodeUtil : INodeUtil
                 return found;
         }
 
+        if (RuntimeUtil.IsLinux())
+            return await ProbeLinuxCache(required, cancellationToken).NoSync();
         return RuntimeUtil.IsWindows() ? await ProbeHostedToolCache(required!, cancellationToken).NoSync() : null;
     }
 
@@ -296,6 +304,8 @@ public sealed partial class NodeUtil : INodeUtil
                 return found;
         }
 
+        if (RuntimeUtil.IsLinux())
+            return await ProbeLinuxCache(null, cancellationToken).NoSync();
         return RuntimeUtil.IsWindows() ? await ProbeHostedToolCacheAny(cancellationToken).NoSync() : null;
     }
 

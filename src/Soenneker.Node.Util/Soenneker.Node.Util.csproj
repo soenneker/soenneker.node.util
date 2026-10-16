@@ -49,6 +49,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <InternalsVisibleTo Include="Soenneker.Node.Util.Tests" />
         <PackageReference Include="Soenneker.Dictionaries.Singletons" Version="4.0.129" />
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="4.0.121" />
         <PackageReference Include="Soenneker.Utils.Directory" Version="4.0.967" />
