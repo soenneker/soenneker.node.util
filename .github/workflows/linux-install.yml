@@ -49,10 +49,17 @@ jobs:
         run: |
           printf 'FROM %s\nRUN %s\n' "$BASE_IMAGE" "$RUNTIME_DEPENDENCIES" > Dockerfile.smoke
           docker build -t nodeutil-smoke - < Dockerfile.smoke
-      - name: Install Node through the native package manager and run npm
-        run: >-
-          docker run --rm -w /smoke -e NODE_UTIL_INSTALL_SMOKE=1
-          -e PipelineEnvironment=true -v "$PWD/smoke:/smoke:ro"
-          nodeutil-smoke /smoke/Soenneker.Node.Util.Tests
-          --treenode-filter '/*/*/LinuxNodeInstallationTests/*'
-          --results-directory /tmp/results
+      - name: Install Node concurrently from separate processes and run npm
+        run: |
+          docker run --rm -w /smoke -e NODE_UTIL_INSTALL_SMOKE=1 \
+            -e PipelineEnvironment=true -v "$PWD/smoke:/smoke:ro" \
+            nodeutil-smoke /bin/sh -c '
+              /smoke/Soenneker.Node.Util.Tests --treenode-filter "/*/*/LinuxNodeInstallationTests/*" --results-directory /tmp/results-1 &
+              first=$!
+              /smoke/Soenneker.Node.Util.Tests --treenode-filter "/*/*/LinuxNodeInstallationTests/*" --results-directory /tmp/results-2 &
+              second=$!
+              status=0
+              wait "$first" || status=1
+              wait "$second" || status=1
+              exit "$status"
+            '

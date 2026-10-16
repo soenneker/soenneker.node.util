@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Task;
 using Soenneker.Hashing.XxHash;
+using Soenneker.Locks.Files;
 using Soenneker.Utils.Runtime;
 
 namespace Soenneker.Node.Util;
@@ -94,6 +95,17 @@ public sealed partial class NodeUtil
 
     public async ValueTask TryInstall(Version? version, CancellationToken cancellationToken = default)
     {
+        // Use a stable path across callers; never delete the lock file on release.
+        string lockPath = RuntimeUtil.IsWindows()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "soenneker-node-install.lock")
+            : "/tmp/soenneker-node-install.lock";
+        await using FileLockLease installLock = await new FileLock(lockPath)
+            .Acquire(TimeSpan.FromMinutes(20), cancellationToken).NoSync();
+
+        // Another installer may have completed while this caller waited.
+        if (await TryLocate(version?.ToString(), cancellationToken).NoSync() is not null)
+            return;
+
         bool latest = version is null;
         int major = version?.Major ?? 0;
         var ver = major.ToString();

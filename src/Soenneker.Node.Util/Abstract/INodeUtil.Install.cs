@@ -28,9 +28,9 @@ public partial interface INodeUtil
     ValueTask<string> EnsureInstalled(string? minVersion = "24", bool installIfMissing = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Attempts to install Node.js.
+    /// Attempts to install Node.js if a suitable version is not already available.
     /// </summary>
-    /// <param name="version">The target version to install. When <see langword="null"/>, installs the latest available version. Platform-specific installers may only honor the major version (for example <c>20</c>).</param>
+    /// <param name="version">The minimum version required. When <see langword="null"/>, accepts any installed version or installs the latest available version. Platform-specific installers may only honor the major version (for example <c>20</c>).</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
     /// <returns>A task that completes when the try install operation is complete.</returns>
     /// <remarks>
@@ -38,8 +38,12 @@ public partial interface INodeUtil
     /// Debian and RPM installations configure the requested NodeSource release; other managers use their native repositories.
     /// The resulting executable is checked against the requested minimum. Unsupported managers or unavailable versions fail explicitly.
     /// Windows uses winget/choco; macOS uses brew.
+    /// Installation is serialized with a persistent file lock, and availability is checked again after acquisition.
+    /// Windows callers share a lock in the current user's local application data directory; Linux and macOS use /tmp.
+    /// All participating processes must be able to open the same lock file for writing.
     /// This method may require elevated privileges depending on the environment.
     /// </remarks>
+    /// <exception cref="TimeoutException">Thrown when the installation lock cannot be acquired within 20 minutes.</exception>
     ValueTask TryInstall(Version? version, CancellationToken cancellationToken = default);
 
     /// <summary>

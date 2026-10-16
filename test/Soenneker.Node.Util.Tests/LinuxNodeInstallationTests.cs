@@ -21,7 +21,7 @@ public sealed class LinuxNodeInstallationTests(Host host) : HostedUnitTest(host)
             throw new InvalidOperationException("The installation smoke test requires Linux.");
 
         var util = Resolve<INodeUtil>(true);
-        await Assert.That(await util.TryLocateAny()).IsNull();
+        // Another test process may already have installed Node in this container.
         string node = await util.EnsureInstalled();
         await Assert.That(await util.TryLocate("24")).IsEqualTo(node);
         await Assert.That(await util.EnsureInstalled(installIfMissing: false)).IsEqualTo(node);
