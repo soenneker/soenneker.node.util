@@ -334,7 +334,7 @@ public sealed partial class NodeUtil
                 return;
         }
 
-        await _fileUtil.Write(markerPath, fingerprint, true, ct).NoSync();
+        await _fileUtil.WriteAtomically(markerPath, fingerprint, true, ct).NoSync();
     }
 
     /// <summary>
