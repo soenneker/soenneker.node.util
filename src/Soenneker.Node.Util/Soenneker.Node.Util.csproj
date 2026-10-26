@@ -49,12 +49,12 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Soenneker.Dictionaries.Singletons" Version="11.0.131" />
+        <PackageReference Include="Soenneker.Dictionaries.Singletons" Version="11.0.132" />
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="11.0.124" />
-        <PackageReference Include="Soenneker.Locks.Files" Version="11.0.3" />
-        <PackageReference Include="Soenneker.Utils.Directory" Version="11.0.969" />
+        <PackageReference Include="Soenneker.Locks.Files" Version="11.0.5" />
+        <PackageReference Include="Soenneker.Utils.Directory" Version="11.0.970" />
         <PackageReference Include="Soenneker.Utils.File" Version="11.0.2325" />
-        <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1600" />
+        <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1601" />
         <PackageReference Include="Soenneker.Extensions.ValueTask" Version="4.0.133" />
     </ItemGroup>
 </Project>
