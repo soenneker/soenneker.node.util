@@ -14,12 +14,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # These minimal images bootstrap CA certificates over HTTP; retry and bound APT requests.
           - image: debian:bookworm-slim
             rid: linux-x64
-            dependencies: apt-get update && apt-get install -y ca-certificates libstdc++6 libssl3
+            dependencies: apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y ca-certificates libstdc++6 libssl3
           - image: ubuntu:24.04
             rid: linux-x64
-            dependencies: apt-get update && apt-get install -y ca-certificates libstdc++6 libssl3t64
+            dependencies: apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update && apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install -y ca-certificates libstdc++6 libssl3t64
           - image: fedora:latest
             rid: linux-x64
             dependencies: dnf install -y ca-certificates libstdc++ openssl-libs
