@@ -51,8 +51,8 @@
     <ItemGroup>
         <PackageReference Include="Soenneker.Dictionaries.Singletons" Version="11.0.140" />
         <PackageReference Include="Soenneker.Hashing.XxHash" Version="11.0.135" />
-        <PackageReference Include="Soenneker.Locks.Files" Version="11.0.16" />
-        <PackageReference Include="Soenneker.Utils.Directory" Version="11.0.979" />
+        <PackageReference Include="Soenneker.Locks.Files" Version="11.0.17" />
+        <PackageReference Include="Soenneker.Utils.Directory" Version="11.0.980" />
         <PackageReference Include="Soenneker.Utils.File" Version="11.0.2342" />
         <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1614" />
     </ItemGroup>
