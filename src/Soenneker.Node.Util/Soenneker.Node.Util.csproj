@@ -54,6 +54,6 @@
         <PackageReference Include="Soenneker.Locks.Files" Version="11.0.21" />
         <PackageReference Include="Soenneker.Utils.Directory" Version="11.0.986" />
         <PackageReference Include="Soenneker.Utils.File" Version="11.0.2348" />
-        <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1621" />
+        <PackageReference Include="Soenneker.Utils.Process" Version="11.0.1623" />
     </ItemGroup>
 </Project>
